@@ -597,11 +597,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startBridgeHost(services: PeekabooServices) {
-        let allowlistedBundles: Set = [
-            PeekabooBridgeConstants.cliBundleIdentifier,
-            "boo.peekaboo.mac", // GUI
-        ]
-        let allowlistedTeams = PeekabooBridgeConstants.trustedReleaseTeamIDs
+        // Local build: accept same-UID clients only. Both allowlists stay empty because the
+        // host derives bundle and team identity solely from Apple-anchored signatures, and the
+        // locally built, ad-hoc-signed CLI has neither.
+        let allowlistedBundles: Set<String> = []
+        let allowlistedTeams: Set<String> = []
         let automationActivityObserver = self.makeAutomationActivityObserver()
 
         self.logger.info("Starting Peekaboo Bridge at \(PeekabooBridgeConstants.peekabooSocketPath, privacy: .public)")
