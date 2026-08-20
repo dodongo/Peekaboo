@@ -442,6 +442,16 @@ enum RuntimeHostResolver {
         let rejectionSummary = permissionRejections.isEmpty
             ? ""
             : "; rejected " + permissionRejections.joined(separator: "; ")
+        if let explicitSocket {
+            // Local patch: an explicitly selected Bridge host is a hard requirement. Falling
+            // back to in-process execution would probe TCC-guarded APIs from the calling app's
+            // process tree and trigger permission prompts for the terminal host.
+            let message = "error: Bridge host at \(explicitSocket) is unavailable or rejected this " +
+                "client\(rejectionSummary); refusing local fallback because " +
+                "--bridge-socket/PEEKABOO_BRIDGE_SOCKET is set.\n"
+            FileHandle.standardError.write(Data(message.utf8))
+            exit(1)
+        }
         return Resolution(
             services: makeLocalServices(options),
             hostDescription: "local (in-process fallback\(rejectionSummary))",
