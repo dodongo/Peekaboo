@@ -754,15 +754,33 @@ public actor PeekabooBridgeClient {
         guard let connectedHost,
               let liveCodeSignatureHash = connectedHost.liveIdentity.codeSignatureHash,
               !liveCodeSignatureHash.isEmpty,
-              let signingIdentity = connectedHost.signingIdentity,
-              signingIdentity.codeSignatureHash == liveCodeSignatureHash,
-              let signingTeamIdentifier = signingIdentity.teamIdentifier,
-              trustedHostTeamIDs.contains(signingTeamIdentifier)
+              Self.isTrustedConnectedHost(
+                  connectedHost,
+                  liveCodeSignatureHash: liveCodeSignatureHash,
+                  trustedHostTeamIDs: trustedHostTeamIDs)
         else {
             throw PeekabooBridgeErrorEnvelope(
                 code: .unauthorizedClient,
                 message: "Bridge handshake did not come from a trusted connected host")
         }
+    }
+
+    // Local patch: the locally built host app is signed with a local identity that carries no
+    // Apple TeamID, so a live same-UID host is trusted in addition to allowlisted release teams.
+    // This mirrors the host's same-UID-only client policy in PeekabooApp.startBridgeHost.
+    private static func isTrustedConnectedHost(
+        _ connectedHost: PeekabooBridgeConnectedHostIdentity,
+        liveCodeSignatureHash: String,
+        trustedHostTeamIDs: Set<String>) -> Bool
+    {
+        if connectedHost.liveIdentity.effectiveUserIdentifier == getuid() {
+            return true
+        }
+        guard let signingIdentity = connectedHost.signingIdentity,
+              signingIdentity.codeSignatureHash == liveCodeSignatureHash,
+              let signingTeamIdentifier = signingIdentity.teamIdentifier
+        else { return false }
+        return trustedHostTeamIDs.contains(signingTeamIdentifier)
     }
 
     private func handshakeCandidate(
@@ -906,10 +924,10 @@ public actor PeekabooBridgeClient {
             guard let connectedHost,
                   let liveCodeSignatureHash = connectedHost.liveIdentity.codeSignatureHash,
                   !liveCodeSignatureHash.isEmpty,
-                  let signingIdentity = connectedHost.signingIdentity,
-                  signingIdentity.codeSignatureHash == liveCodeSignatureHash,
-                  let signingTeamIdentifier = signingIdentity.teamIdentifier,
-                  self.trustedHostTeamIDs?.contains(signingTeamIdentifier) == true,
+                  Self.isTrustedConnectedHost(
+                      connectedHost,
+                      liveCodeSignatureHash: liveCodeSignatureHash,
+                      trustedHostTeamIDs: self.trustedHostTeamIDs ?? []),
                   connectedHost.liveIdentity.processIdentifier == advertisedListenerAttestation.host.processIdentifier,
                   connectedHost.liveIdentity.processStartIdentity ==
                   advertisedListenerAttestation.host.processStartIdentity,
@@ -945,10 +963,12 @@ public actor PeekabooBridgeClient {
             listenerLiveIdentity = connectedHost.liveIdentity
             sessionAttestation = advertisedSessionAttestation
             receiptlessAuthenticatedHost = nil
-            authenticatedHostIdentity = Self.authenticatedHostIdentity(
-                advertised: advertisedHostIdentity,
-                listener: advertisedListenerAttestation,
-                signingIdentity: signingIdentity)
+            authenticatedHostIdentity = connectedHost.signingIdentity.flatMap { signingIdentity in
+                Self.authenticatedHostIdentity(
+                    advertised: advertisedHostIdentity,
+                    listener: advertisedListenerAttestation,
+                    signingIdentity: signingIdentity)
+            }
         } else {
             listenerAttestation = nil
             listenerLiveIdentity = nil
