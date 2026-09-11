@@ -119,7 +119,7 @@ if [[ -n "${APP_BUNDLE}" ]]; then
   main_executable="${APP_BUNDLE}/Contents/MacOS/${main_executable_name}"
   [[ -f "${main_executable}" && -x "${main_executable}" && ! -L "${main_executable}" ]] || \
     fail "App main executable is missing or symlinked: ${main_executable}"
-  "${FILE_BIN}" -b "${main_executable}" | grep -q 'Mach-O' || \
+  "${FILE_BIN}" -b "${main_executable}" | grep -F 'Mach-O' >/dev/null || \
     fail "App main executable is not Mach-O: ${main_executable}"
 
   canonical_contents="$(${REALPATH_BIN} "${APP_BUNDLE}/Contents")"

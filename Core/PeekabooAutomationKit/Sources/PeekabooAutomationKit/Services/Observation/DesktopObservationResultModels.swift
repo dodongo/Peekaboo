@@ -99,6 +99,7 @@ public enum DesktopObservationContentVerificationError: Error, LocalizedError, S
     case missingArtifactDigest(String)
     case missingArtifactPath(String)
     case unreadableArtifact(String)
+    case artifactTooLarge(String)
     case digestMismatch
 
     public var errorDescription: String? {
@@ -111,6 +112,8 @@ public enum DesktopObservationContentVerificationError: Error, LocalizedError, S
             "Desktop observation omitted its \(label) path."
         case let .unreadableArtifact(label):
             "Desktop observation \(label) could not be read."
+        case let .artifactTooLarge(label):
+            "Desktop observation \(label) exceeds the capture size limit."
         case .digestMismatch:
             "Desktop observation content no longer matches its signed digest."
         }
@@ -348,24 +351,38 @@ extension DesktopObservationResult {
         guard let path else {
             throw DesktopObservationContentVerificationError.missingArtifactPath(label)
         }
-        let data: Data
-        do {
-            data = try Data(contentsOf: URL(fileURLWithPath: path))
-        } catch {
-            throw DesktopObservationContentVerificationError.unreadableArtifact(label)
-        }
+        let data = try Self.readArtifact(at: path, label: label)
         guard let expectedSHA256 else { return data }
         try DesktopObservationContentDigest.verify(data, expectedSHA256: expectedSHA256)
         return data
     }
 
-    private static func readArtifactIfPresent(at path: String?, label: String) throws -> Data? {
-        guard let path else { return nil }
+    /// Capture PNG bound reused for observation verify/rebinding file loads.
+    public static let maximumArtifactBytes = CaptureArtifactIntegrityValidator.maximumPNGBytes
+
+    public static func readArtifact(
+        at path: String,
+        label: String,
+        maxBytes: Int = DesktopObservationResult.maximumArtifactBytes) throws -> Data
+    {
         do {
-            return try Data(contentsOf: URL(fileURLWithPath: path))
+            return try BoundedArtifactFile(path: path, maximumBytes: maxBytes).read()
+        } catch BoundedArtifactFileError.tooLarge {
+            throw DesktopObservationContentVerificationError.artifactTooLarge(label)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw DesktopObservationContentVerificationError.unreadableArtifact(label)
         }
+    }
+
+    static func readArtifactIfPresent(
+        at path: String?,
+        label: String,
+        maxBytes: Int = DesktopObservationResult.maximumArtifactBytes) throws -> Data?
+    {
+        guard let path else { return nil }
+        return try self.readArtifact(at: path, label: label, maxBytes: maxBytes)
     }
 
     private static func requireDigestIfNeeded(

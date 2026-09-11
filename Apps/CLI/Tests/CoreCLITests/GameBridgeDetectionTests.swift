@@ -1,9 +1,20 @@
 import Foundation
+import PeekabooFoundation
 import Testing
 @testable import PeekabooAutomationKit
 
 @Suite("GameBridge Detection Tests")
 struct GameBridgeDetectionTests {
+    @Test
+    func `Public method references retain their original signatures`() {
+        let read: (String, URL, Date, TimeInterval) -> GameBridgeDetectionService.GameManifest? =
+            GameBridgeDetectionService.readManifest
+        let detect: (WindowContext?, String?, URL) -> ElementDetectionResult? = GameBridgeDetectionService.tryDetect
+        let root = FileManager.default.temporaryDirectory
+        #expect(read("unknown", root, Date(), 5) == nil)
+        #expect(detect(nil, nil, root) == nil)
+    }
+
     @available(macOS 14.0, *)
     @Test
     func `Known app is recognized`() {
@@ -259,6 +270,99 @@ struct GameBridgeDetectionTests {
         )
 
         #expect(result == nil)
+    }
+
+    @available(macOS 14.0, *)
+    @Test
+    func `Firestaff manifest budget is opt in and enforced during detection`() throws {
+        let maximumBytes = 1024 * 1024
+        let padding = String(repeating: "x", count: maximumBytes)
+        let json = """
+        {"version":1,"app":"firestaff","gameState":"huge",
+         "framebuffer":{"width":320,"height":200},"elements":[],
+         "padding":"\(padding)"}
+        """
+        #expect(json.utf8.count > maximumBytes)
+
+        let manifestRootURL = try self.writeFirestaffManifest(json)
+        defer { try? FileManager.default.removeItem(at: manifestRootURL) }
+
+        let context = WindowContext(
+            applicationName: "firestaff",
+            applicationBundleId: nil,
+            applicationProcessId: nil,
+            windowTitle: nil,
+            windowID: nil,
+            windowBounds: nil,
+            shouldFocusWebContent: false,
+            traversalBudget: nil
+        )
+        let result = GameBridgeDetectionService.tryDetect(
+            windowContext: context,
+            snapshotId: "oversized-snapshot",
+            manifestRootURL: manifestRootURL,
+            environment: ["PEEKABOO_GAMEBRIDGE_MAX_MANIFEST_BYTES": String(maximumBytes)]
+        )
+
+        #expect(result == nil)
+        #expect(GameBridgeDetectionService.readManifest(
+            appName: "firestaff",
+            manifestRootURL: manifestRootURL,
+            environment: ["PEEKABOO_GAMEBRIDGE_MAX_MANIFEST_BYTES": String(maximumBytes)]
+        ) == nil)
+        #expect(GameBridgeDetectionService.readManifest(
+            appName: "firestaff",
+            manifestRootURL: manifestRootURL,
+            environment: [:]
+        )?.gameState == "huge")
+        #expect(GameBridgeDetectionService.readManifest(
+            appName: "firestaff",
+            manifestRootURL: manifestRootURL,
+            environment: ["PEEKABOO_GAMEBRIDGE_MAX_MANIFEST_BYTES": String(json.utf8.count)]
+        )?.gameState == "huge")
+        for invalid in ["0", "-1", "abc", "999999999999999999999999999"] {
+            #expect(GameBridgeDetectionService.readManifest(
+                appName: "firestaff",
+                manifestRootURL: manifestRootURL,
+                environment: ["PEEKABOO_GAMEBRIDGE_MAX_MANIFEST_BYTES": invalid]
+            ) == nil)
+        }
+    }
+
+    @available(macOS 14.0, *)
+    @Test
+    func `Opened Firestaff frame survives atomic replacement`() throws {
+        let first = """
+        {"version":1,"app":"firestaff","gameState":"frame1",
+         "framebuffer":{"width":320,"height":200},"elements":[]}
+        """
+        let second = """
+        {"version":1,"app":"firestaff","gameState":"frame2",
+         "framebuffer":{"width":320,"height":200},"elements":[]}
+        """
+        let manifestRootURL = try self.writeFirestaffManifest(first)
+        defer { try? FileManager.default.removeItem(at: manifestRootURL) }
+        let path = manifestRootURL
+            .appendingPathComponent(".firestaff")
+            .appendingPathComponent("accessibility.json")
+        let file = try BoundedArtifactFile(
+            path: path.path,
+            maximumBytes: 1024 * 1024
+        )
+        try second.write(to: path, atomically: true, encoding: .utf8)
+
+        let data = try file.readImmutableFrame()
+        let opened = try JSONDecoder().decode(
+            GameBridgeDetectionService.GameManifest.self,
+            from: data
+        )
+        #expect(opened.gameState == "frame1")
+
+        let live = try #require(GameBridgeDetectionService.readManifest(
+            appName: "firestaff",
+            manifestRootURL: manifestRootURL
+        ))
+        #expect(live.gameState == "frame2")
     }
 
     private func writeFirestaffManifest(_ json: String) throws -> URL {

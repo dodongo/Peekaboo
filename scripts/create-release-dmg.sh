@@ -132,8 +132,8 @@ verify_identity() {
   local artifact="$1"
   local authority team_id
 
-  authority="$(codesign -dv --verbose=4 "$artifact" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
-  team_id="$(codesign -dv --verbose=4 "$artifact" 2>&1 | sed -n 's/^TeamIdentifier=//p' | head -1)"
+  authority="$(codesign -dv --verbose=4 "$artifact" 2>&1 | sed -n 's/^Authority=//p' | sed -n '1p')"
+  team_id="$(codesign -dv --verbose=4 "$artifact" 2>&1 | sed -n 's/^TeamIdentifier=//p' | sed -n '1p')"
   [[ "$authority" == "$EXPECTED_SIGN_IDENTITY" ]] ||
     fail "$artifact is signed with '$authority'; expected '$EXPECTED_SIGN_IDENTITY'"
   [[ "$team_id" == "$EXPECTED_TEAM_ID" ]] ||
@@ -147,7 +147,7 @@ verify_nested_app_identities() {
   local count=0
 
   while IFS= read -r -d '' candidate; do
-    if file -b "$candidate" | grep -q 'Mach-O'; then
+    if file -b "$candidate" | grep -F 'Mach-O' >/dev/null; then
       codesign --verify --strict --verbose=2 "$candidate"
       verify_identity "$candidate"
       count=$((count + 1))

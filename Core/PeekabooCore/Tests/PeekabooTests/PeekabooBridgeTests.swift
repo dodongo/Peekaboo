@@ -765,7 +765,10 @@ struct PeekabooBridgeTests {
                 hostKind: .gui,
                 allowlistedTeams: [],
                 allowlistedBundles: [],
-                postEventAccessEvaluator: { true })
+                postEventAccessEvaluator: { true },
+                permissionStatusEvaluator: { _ in
+                    PermissionsStatus(screenRecording: true, accessibility: true)
+                })
         }
 
         let request = PeekabooBridgeRequest.captureFrontmost(
@@ -795,6 +798,9 @@ struct PeekabooBridgeTests {
                 allowlistedTeams: [],
                 allowlistedBundles: [],
                 postEventAccessEvaluator: { true },
+                permissionStatusEvaluator: { _ in
+                    PermissionsStatus(screenRecording: true, accessibility: true)
+                },
                 windowOwnerProcessIdentifierProvider: { _ in 42 },
                 windowBoundsProvider: { _ in CGRect(x: 10, y: 20, width: 300, height: 200) },
                 processStartIdentityProvider: { _ in 7 })
@@ -828,7 +834,8 @@ struct PeekabooBridgeTests {
                 services: stub,
                 hostKind: .gui,
                 allowlistedTeams: [],
-                allowlistedBundles: [])
+                allowlistedBundles: [],
+                permissionStatusEvaluator: { _ in Self.inputPermissions })
         }
         let request = PeekabooBridgeRequest.getFocusedElement(.init(targetProcessIdentifier: 4242))
         let requestData = try JSONEncoder.peekabooBridgeEncoder().encode(request)
@@ -1765,6 +1772,7 @@ extension PeekabooBridgeTests {
                 allowlistedBundles: [],
                 supportedVersions: Self.legacyProjectedVersion...Self.legacyProjectedVersion,
                 postEventAccessEvaluator: { true },
+                permissionStatusEvaluator: { _ in Self.inputPermissions },
                 windowOwnerProcessIdentifierProvider: { _ in 4242 },
                 windowBoundsProvider: { _ in CGRect(x: 0, y: 0, width: 800, height: 600) },
                 processStartIdentityProvider: { _ in 1 })
@@ -1979,7 +1987,8 @@ extension PeekabooBridgeTests {
                 services: services,
                 hostKind: .gui,
                 allowlistedTeams: [],
-                allowlistedBundles: [])
+                allowlistedBundles: [],
+                permissionStatusEvaluator: { _ in Self.inputPermissions })
         }
         let host = PeekabooBridgeHost(
             socketPath: socketPath,
@@ -2027,7 +2036,8 @@ extension PeekabooBridgeTests {
                 services: services,
                 hostKind: .gui,
                 allowlistedTeams: [],
-                allowlistedBundles: [])
+                allowlistedBundles: [],
+                permissionStatusEvaluator: { _ in Self.inputPermissions })
         }
         let host = PeekabooBridgeHost(
             socketPath: socketPath,
@@ -2198,6 +2208,8 @@ final class StubServices: PeekabooBridgeServiceProviding {
     let desktopObservation: any DesktopObservationServiceProtocol
     let permissions: PermissionsService = .init()
     let supportsScreenCaptureKitProcessOwnership: Bool
+    let supportsClassicCaptureWithoutScreenCaptureKit: Bool
+    let supportsDesktopObservationCaptureEngine: Bool
     var lastBrowserStatusChannel: String?
     var lastBrowserConnectTarget: (channel: String?, browserURL: String?)?
     var lastBrowserExecute: PeekabooBridgeBrowserExecuteRequest?
@@ -2245,7 +2257,9 @@ final class StubServices: PeekabooBridgeServiceProviding {
         snapshots: any SnapshotManagerProtocol = SnapshotManager(),
         desktopObservation: (any DesktopObservationServiceProtocol)? = nil,
         ownedDesktopOperationLanes: Set<PeekabooBridgeOperation> = [],
-        supportsScreenCaptureKitProcessOwnership: Bool = false)
+        supportsScreenCaptureKitProcessOwnership: Bool = false,
+        supportsClassicCaptureWithoutScreenCaptureKit: Bool = false,
+        supportsDesktopObservationCaptureEngine: Bool = false)
     {
         let desktopObservationStub = StubDesktopObservationService()
         self.screenCapture = self.screenCaptureStub
@@ -2257,6 +2271,8 @@ final class StubServices: PeekabooBridgeServiceProviding {
         self.desktopObservation = desktopObservation ?? desktopObservationStub
         self.ownedDesktopOperationLanes = ownedDesktopOperationLanes
         self.supportsScreenCaptureKitProcessOwnership = supportsScreenCaptureKitProcessOwnership
+        self.supportsClassicCaptureWithoutScreenCaptureKit = supportsClassicCaptureWithoutScreenCaptureKit
+        self.supportsDesktopObservationCaptureEngine = supportsDesktopObservationCaptureEngine
     }
 
     func ownsDesktopOperationLane(for operation: PeekabooBridgeOperation) -> Bool {

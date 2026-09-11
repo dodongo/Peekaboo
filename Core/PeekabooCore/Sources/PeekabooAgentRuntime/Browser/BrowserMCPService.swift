@@ -1203,9 +1203,7 @@ public final class BrowserMCPService: BrowserMCPClientProviding, BrowserMCPActio
             description: "Chrome DevTools automation for \(browserURL)")
     }
 
-    // Local patch: GUI launches inherit launchd's minimal PATH, so a bare "npx" often
-    // cannot be resolved. Prefer an explicit override, then well-known install
-    // locations, before falling back to PATH lookup.
+    /// Resolves npx for GUI launches, which inherit launchd's minimal PATH.
     static func npxCommand(environment: [String: String]) -> String {
         if let override = environment["PEEKABOO_NPX_PATH"], !override.isEmpty {
             return override

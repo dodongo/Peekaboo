@@ -88,7 +88,7 @@ require_macho() {
 
   [[ -f "$path" && -x "$path" && ! -L "$path" ]] || \
     fail "Executable code is missing, not executable, or symlinked: $path"
-  "$FILE_BIN" -b "$path" | grep -q 'Mach-O' || fail "Executable code is not Mach-O: $path"
+  "$FILE_BIN" -b "$path" | grep -F 'Mach-O' >/dev/null || fail "Executable code is not Mach-O: $path"
 }
 
 require_only_match() {

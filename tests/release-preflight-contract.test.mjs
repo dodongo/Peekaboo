@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
+import {
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
+  rmSync, statSync, symlinkSync, writeFileSync
+} from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
@@ -47,7 +51,7 @@ test('preparation accepts Unreleased while publication requires a dated heading'
     changelogSource,
     version: '4.0.0',
     requireDatedHeading: true
-  }), ["full publication preflight requires '## [4.0.0] - YYYY-MM-DD'; found Unreleased"]);
+  }), ["full publication preflight requires '## 4.0.0 - YYYY-MM-DD' (version brackets optional); found Unreleased"]);
 });
 
 test('publication accepts only an exact heading with a valid ISO calendar date', () => {
@@ -71,8 +75,36 @@ test('publication accepts only an exact heading with a valid ISO calendar date',
     version: '4.0.0',
     requireDatedHeading: false
   }), [
-    "CHANGELOG.md must contain exactly one '## [4.0.0] - Unreleased' or dated ISO heading; found 2"
+    "CHANGELOG.md must contain exactly one '## 4.0.0 - Unreleased' or dated ISO heading " +
+      "(version brackets optional); found 2"
   ]);
+});
+
+test('publication accepts plain version headings while preserving date and uniqueness checks', () => {
+  const validate = (changelogSource, requireDatedHeading = true) => validateChangelogContract({
+    changelogSource,
+    version: '4.3.1',
+    requireDatedHeading
+  });
+  assert.deepEqual(validate('## 4.3.1 - 2026-09-05\n'), []);
+  assert.deepEqual(validate('## 4.3.1 - Unreleased\n', false), []);
+  assert.match(validate('## 4.3.1 - Unreleased\n')[0], /requires.*YYYY-MM-DD.*Unreleased/);
+  assert.match(validate('## 4.3.1 - 2026-02-30\n')[0], /invalid release date/);
+  assert.match(validate('## 4.3.1 - 2026-09-05\n\n## [4.3.1] - 2026-09-05\n')[0], /found 2/);
+  for (const heading of ['## [4.3.1 - 2026-09-05', '## 4.3.1] - 2026-09-05', '## 4.3.10 - 2026-09-05']) {
+    assert.match(validate(`${heading}\n`)[0], /found 0/);
+  }
+});
+
+test('current root and CLI release headings pass the preparation gate', () => {
+  const { version } = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'));
+  for (const path of ['CHANGELOG.md', 'Apps/CLI/CHANGELOG.md']) {
+    assert.deepEqual(validateChangelogContract({
+      changelogSource: readFileSync(join(projectRoot, path), 'utf8'),
+      version,
+      requireDatedHeading: false
+    }), [], path);
+  }
 });
 
 test('command registry roots must have exact page, index, and reference parity', () => {
@@ -195,6 +227,279 @@ const prepareSource = readFileSync(new URL('../scripts/prepare-release.js', impo
 const driverSource = readFileSync(new URL('../scripts/release-binaries.sh', import.meta.url), 'utf8');
 const sanitizerPath = join(projectRoot, 'scripts/terminal-artifact-env.sh');
 const safeTestsFunction = prepareSource.match(/^function runSafeTests\(\) \{[\s\S]*?^\}/m)?.[0];
+
+function verifyBinaryFixture(t, {
+  name = 'peekaboo',
+  mode = 0o755,
+  missing = false,
+  symlink = false,
+  statFailure = false,
+  universal = false,
+  architectures = 'arm64',
+  lipoExit = 0,
+  help = '  fixture help \u00e9\n',
+  helpExit = 0
+} = {}) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'peekaboo-binary-contract-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const tools = join(root, 'tools');
+  const binaryPath = join(root, name);
+  const callLog = join(root, 'calls.jsonl');
+  const messages = [];
+  const shellCalls = [];
+  mkdirSync(tools);
+  writeFileSync(join(root, 'package.json'), '{"version":"1.2.3"}\n');
+  const toolSource = (tool) => `#!${process.execPath}
+const fs = require('node:fs');
+fs.appendFileSync(process.env.FIXTURE_CALL_LOG, JSON.stringify({
+  tool: ${JSON.stringify(tool)}, args: process.argv.slice(2), cwd: process.cwd()
+}) + '\\n');
+process.stdout.write(process.env.${tool.toUpperCase()}_OUTPUT);
+process.exit(Number(process.env.${tool.toUpperCase()}_EXIT));
+`;
+  writeFileSync(join(tools, 'lipo'), toolSource('lipo'), { mode: 0o755 });
+  if (!missing) {
+    const target = symlink ? join(root, 'target-binary') : binaryPath;
+    writeFileSync(target, toolSource('binary'));
+    chmodSync(target, mode);
+    if (symlink) symlinkSync(target, binaryPath);
+  }
+  const env = {
+    PATH: `${tools}:/usr/bin:/bin`,
+    HOME: root,
+    TMPDIR: root,
+    LANG: 'C',
+    FIXTURE_CALL_LOG: callLog,
+    LIPO_OUTPUT: architectures,
+    LIPO_EXIT: String(lipoExit),
+    BINARY_OUTPUT: help,
+    BINARY_EXIT: String(helpExit),
+    PEEKABOO_REQUIRE_UNIVERSAL: universal ? '1' : '0'
+  };
+  const execFunction = prepareSource.match(/^function exec\(command, options = \{\}\) \{[\s\S]*?^\}/m)?.[0];
+  const verifyFunction = prepareSource.match(/^function buildAndVerifyPackage\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(execFunction && verifyFunction, 'inspect the actual checks without invoking main');
+  const legacyCommands = new Set([
+    `stat -f "%Lp" "${binaryPath}" 2>/dev/null || stat -c "%a" "${binaryPath}"`,
+    `lipo -info "${binaryPath}"`,
+    `"${binaryPath}" --help`
+  ]);
+  const verify = runInNewContext(`${execFunction}\n${verifyFunction}\nbuildAndVerifyPackage`, {
+    projectRoot: root, binaryOverride: binaryPath, noBuild: true, colors: {},
+    process: { env }, join, existsSync, readFileSync,
+    statSync(path) {
+      if (statFailure) throw new Error('fixture stat failure');
+      return statSync(path);
+    },
+    execSync(command, options) {
+      shellCalls.push(command);
+      // Refuse hostile red-phase commands before any shell or marker can run.
+      if (!legacyCommands.has(command) || /["$`]/.test(binaryPath)) {
+        throw new Error('fixture refused shell interpretation of the binary path');
+      }
+      return execSync(command, { ...options, env, timeout: 5000 });
+    },
+    execFileSync(file, args, options) {
+      assert.ok(file === 'lipo' || file === binaryPath, 'only fixture tools may execute');
+      return execFileSync(file, Array.from(args), { ...options, env, timeout: 5000 });
+    },
+    execNpm() { return 'peekaboo\npeekaboo-mcp.js\nREADME.md\nLICENSE\n'; },
+    execWithOutput() { assert.fail('binary verification must not build a release'); },
+    logStep() {},
+    log(message) { messages.push(message); },
+    logSuccess(message) { messages.push(message); },
+    logWarning(message) { messages.push(message); },
+    logError(message) { messages.push(message); }
+  });
+  const passed = verify();
+  const calls = existsSync(callLog)
+    ? readFileSync(callLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+    : [];
+  for (const marker of ['dollar-marker', 'backtick-marker']) {
+    assert.equal(existsSync(join(root, marker)), false, 'path text must never run a marker command');
+  }
+  return { passed, calls, messages, shellCalls, root, binaryPath };
+}
+
+for (const name of [
+  'peekaboo with spaces',
+  "peekaboo 'single quotes'",
+  'peekaboo "double quotes"',
+  'peekaboo $(touch dollar-marker)',
+  'peekaboo `touch backtick-marker`'
+]) {
+  test(`binary verification passes a literal filename: ${name}`, (t) => {
+    const result = verifyBinaryFixture(t, { name });
+    assert.equal(result.passed, true, `${name}: ${result.messages.join('\n')}`);
+    assert.deepEqual(result.shellCalls, [], 'binary verification must not invoke a shell');
+    assert.deepEqual(result.calls, [
+      { tool: 'lipo', args: ['-info', result.binaryPath], cwd: result.root },
+      { tool: 'binary', args: ['--help'], cwd: result.root }
+    ]);
+  });
+}
+
+test('binary verification follows symlinks and accepts owner-only executable permission', (t) => {
+  for (const symlink of [false, true]) {
+    const result = verifyBinaryFixture(t, { symlink, mode: 0o744 });
+    assert.equal(result.passed, true, result.messages.join('\n'));
+    assert.deepEqual(result.calls.map((call) => call.tool), ['lipo', 'binary']);
+    assert.deepEqual(result.calls[0].args, ['-info', result.binaryPath]);
+  }
+});
+
+test('binary verification preserves permission, architecture, and command failures', (t) => {
+  const cases = [
+    [{ missing: true }, 'peekaboo binary not found', []],
+    [{ mode: 0o644 }, 'peekaboo binary is not executable', []],
+    [{ statFailure: true }, 'Failed to check binary permissions', []],
+    [{ architectures: ' \nx86_64 \n' }, 'peekaboo binary is missing arm64', ['lipo']],
+    [{ universal: true }, 'peekaboo binary does not contain x86_64', ['lipo']],
+    [{ lipoExit: 31 }, 'Failed to check binary architectures (lipo command failed)', ['lipo']],
+    [{ help: '' }, 'peekaboo binary does not respond to --help command', ['lipo', 'binary']],
+    [{ help: ' \t\n' }, 'peekaboo binary does not respond to --help command', ['lipo', 'binary']],
+    [{ helpExit: 29 }, 'peekaboo binary failed to execute with --help', ['lipo', 'binary']],
+    // Any executable bit passes the mode gate, even when this owner cannot execute.
+    [{ mode: 0o654 }, 'peekaboo binary failed to execute with --help', ['lipo']]
+  ];
+  for (const [options, diagnostic, tools] of cases) {
+    const result = verifyBinaryFixture(t, options);
+    assert.equal(result.passed, false, JSON.stringify(options));
+    assert.ok(result.messages.some((message) => message.includes(diagnostic)),
+      `${JSON.stringify(options)}: ${result.messages.join('\n')}`);
+    assert.deepEqual(result.calls.map((call) => call.tool), tools);
+    if (options.architectures) assert.ok(result.messages.includes('Found: x86_64'));
+    if (options.helpExit) assert.ok(result.messages.some((message) => message.startsWith('Error: ')));
+  }
+});
+
+test('binary verification requires x86_64 only in universal mode', (t) => {
+  for (const universal of [false, true]) {
+    const result = verifyBinaryFixture(t, { universal, architectures: ' \narm64 x86_64 \n' });
+    assert.equal(result.passed, true, result.messages.join('\n'));
+    assert.ok(result.messages.includes('Binary contains both arm64 and x86_64 architectures'));
+  }
+  const arm = verifyBinaryFixture(t);
+  assert.equal(arm.passed, true, arm.messages.join('\n'));
+  assert.ok(arm.messages.includes('Binary is arm64-only (set PEEKABOO_REQUIRE_UNIVERSAL=1 to enforce universal)'));
+});
+
+function githubDraftLookup(t, { mode = 'draft', apiUrl, command = 'verify' } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'peekaboo-draft-lookup-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(root, 'receipt.json'), JSON.stringify({ assets: {} }));
+  writeFileSync(join(root, 'github-release-body.md'), 'fixture release notes\n');
+  const names = ['github_release_api_path', 'github_release_exists', 'verify_github_release_assets'];
+  const functions = names.map((name) => driverSource.match(
+    new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?^\\}`, 'm'))?.[0] ?? '').join('\n');
+  const sourceCommit = 'a'.repeat(40);
+  const script = `set -euo pipefail
+VERSION=9.8.7
+GITHUB_HOST=github.com
+GITHUB_REPOSITORY=github.com/openclaw/Peekaboo
+GITHUB_API_REPOSITORY=openclaw/Peekaboo
+BLUE= GREEN= NC=
+fail() { printf '%s\\n' "$*" >&2; exit 1; }
+assert_publication_receipt() { :; }
+github_tag_commit() { printf '%s\\n' "$RELEASE_SOURCE_COMMIT"; }
+node() { "$NODE_BIN" "$@"; }
+gh() {
+  printf '%s\\n' "$*" >> "$CALL_LOG"
+  if [[ "$1 $2" == 'release view' ]]; then
+    case "$FIXTURE_MODE" in
+      missing) printf 'release not found\\n' >&2; return 1 ;;
+      auth) printf 'HTTP 401: unauthorized\\n' >&2; return 1 ;;
+      api-error) printf 'HTTP 404: Not Found\\n' >&2; return 1 ;;
+    esac
+    printf '%s\\n' "$FIXTURE_API_URL"
+  elif [[ "$*" == 'api --hostname github.com repos/openclaw/Peekaboo/releases/123' ]]; then
+    printf '%s\\n' "$FIXTURE_RELEASE_JSON"
+  else
+    printf 'HTTP 404: Not Found\\n' >&2
+    return 1
+  fi
+}
+${functions}
+if [[ "$FIXTURE_COMMAND" == verify ]]; then
+  verify_github_release_assets
+else
+  github_release_exists
+fi
+`;
+  const result = spawnSync('/bin/bash', ['--noprofile', '--norc', '-c', script], {
+    encoding: 'utf8',
+    env: {
+      PATH: process.env.PATH, HOME: root, TMPDIR: root, NODE_BIN: process.execPath,
+      RELEASE_DIR: root, RELEASE_SOURCE_COMMIT: sourceCommit,
+      PUBLICATION_RECEIPT_PATH: join(root, 'receipt.json'),
+      RELEASE_CONTRACT: join(projectRoot, 'scripts/release-driver-contract.mjs'),
+      CALL_LOG: join(root, 'calls'), FIXTURE_MODE: mode, FIXTURE_COMMAND: command,
+      FIXTURE_API_URL: apiUrl ?? 'https://api.github.com/repos/openclaw/Peekaboo/releases/123',
+      FIXTURE_RELEASE_JSON: JSON.stringify({ tag_name: 'v9.8.7', draft: true, body: 'fixture release notes\n', assets: [] })
+    }
+  });
+  return { ...result, calls: readFileSync(join(root, 'calls'), 'utf8') };
+}
+
+test('draft verification uses the authenticated release ID when the tag endpoint returns 404', (t) => {
+  const result = githubDraftLookup(t);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.calls, /release view v9\.8\.7 --repo github\.com\/openclaw\/Peekaboo --json apiUrl/);
+  assert.match(result.calls, /api --hostname github\.com repos\/openclaw\/Peekaboo\/releases\/123/);
+  assert.doesNotMatch(result.calls, /releases\/tags\//);
+  assert.equal(githubDraftLookup(t, { command: 'exists' }).status, 0);
+});
+
+test('draft lookup distinguishes absence from provider failures and rejects redirected locators', (t) => {
+  assert.equal(githubDraftLookup(t, { mode: 'missing', command: 'exists' }).status, 2);
+  for (const mode of ['auth', 'api-error']) {
+    const result = githubDraftLookup(t, { mode, command: 'exists' });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Could not determine/);
+  }
+  for (const apiUrl of [
+    'https://example.com/repos/openclaw/Peekaboo/releases/123',
+    'https://api.github.com/repos/other/repo/releases/123',
+    'https://api.github.com/repos/openclaw/Peekaboo/releases/123?redirect=1',
+    'https://api.github.com/repos/openclaw/Peekaboo/releases/0'
+  ]) {
+    const result = githubDraftLookup(t, { apiUrl });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /invalid release API locator/);
+    assert.doesNotMatch(result.calls, /^api /m);
+  }
+});
+
+test('npm publication reads normalize singleton JSON wrappers without hiding ambiguous or failed results', () => {
+  const functionSource = driverSource.match(/^npm_view_single_json\(\) \{[\s\S]*?^\}$/m)?.[0];
+  assert.ok(functionSource);
+  const run = (stdout, exit = 0) => spawnSync('/bin/bash', ['--noprofile', '--norc', '-c', `
+set -euo pipefail
+NPM_REGISTRY=https://registry.npmjs.org/
+node() { "$NODE_BIN" "$@"; }
+npm() { printf '%s' "$FIXTURE_STDOUT"; return "$FIXTURE_EXIT"; }
+${functionSource}
+npm_view_single_json @steipete/peekaboo@4.3.1 version
+`], { encoding: 'utf8', env: {
+    PATH: process.env.PATH, NODE_BIN: process.execPath, FIXTURE_STDOUT: stdout, FIXTURE_EXIT: String(exit)
+  } });
+  for (const value of ['4.3.1', { version: '4.3.1', dist: { integrity: 'fixture' } }, { '4.3.1': '2026-09-06T13:15:51Z' }]) {
+    for (const wrapped of [value, [value]]) {
+      const result = run(JSON.stringify(wrapped));
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), value);
+    }
+  }
+  for (const invalid of ['[]', '["4.3.0","4.3.1"]', 'not JSON']) {
+    const result = run(invalid);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /did not return one JSON value/);
+  }
+  const failure = '{"error":{"code":"E404"}}';
+  const result = run(failure, 37);
+  assert.equal(result.status, 37);
+  assert.equal(result.stdout, failure);
+});
 
 function safeTestsLaunch() {
   assert.ok(safeTestsFunction, 'test launcher must be inspectable without executing preparation');

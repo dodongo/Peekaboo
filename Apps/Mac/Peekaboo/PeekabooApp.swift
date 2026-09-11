@@ -215,6 +215,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var didObserveAgentMode = false
 
     override init() {
+        if case let .refusedCommandLineInvocation(argument) = PeekabooAppLaunchPolicy(
+            arguments: CommandLine.arguments).mode
+        {
+            let message =
+                "Peekaboo.app is the GUI/Bridge host and cannot handle CLI argument \(argument.debugDescription). " +
+                "Use the separate peekaboo CLI binary from Homebrew or the release tarball " +
+                "peekaboo-macos-universal.tar.gz; the app bundle executable must not be used as the CLI.\n"
+            FileHandle.standardError.write(Data(message.utf8))
+            exit(EX_USAGE)
+        }
         try? ScreenCaptureKitOwnerLease.registerCurrentProcessCapability()
         ScreenCaptureKitOwnerLease.beginCurrentProcessCapabilityPreparation()
         let launchPolicy = PeekabooAppLaunchPolicy.current
@@ -597,11 +607,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startBridgeHost(services: PeekabooServices) {
-        // Local build: accept same-UID clients only. Both allowlists stay empty because the
-        // host derives bundle and team identity solely from Apple-anchored signatures, and the
-        // locally built, ad-hoc-signed CLI has neither.
-        let allowlistedBundles: Set<String> = []
-        let allowlistedTeams: Set<String> = []
+        let allowlistedBundles: Set = [
+            PeekabooBridgeConstants.cliBundleIdentifier,
+            "boo.peekaboo.mac", // GUI
+        ]
+        let allowlistedTeams = PeekabooBridgeConstants.trustedReleaseTeamIDs
         let automationActivityObserver = self.makeAutomationActivityObserver()
 
         self.logger.info("Starting Peekaboo Bridge at \(PeekabooBridgeConstants.peekabooSocketPath, privacy: .public)")
