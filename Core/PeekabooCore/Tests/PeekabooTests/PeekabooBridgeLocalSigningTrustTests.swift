@@ -65,7 +65,7 @@ struct PeekabooBridgeLocalSigningTrustTests {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = try Self.writePolicy(in: directory)
-        #expect(chmod(file.path, mode_t(mode)) == 0)
+        #expect(Darwin.chmod(file.path, mode_t(mode)) == 0)
         #expect(throws: (any Error).self) { try PeekabooBridgeLocalSigningTrust.load(from: file) }
     }
 
@@ -74,7 +74,7 @@ struct PeekabooBridgeLocalSigningTrustTests {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = try Self.writePolicy(in: directory)
-        #expect(chmod(directory.path, mode_t(mode)) == 0)
+        #expect(Darwin.chmod(directory.path, mode_t(mode)) == 0)
         #expect(throws: (any Error).self) { try PeekabooBridgeLocalSigningTrust.load(from: file) }
     }
 
@@ -114,7 +114,7 @@ struct PeekabooBridgeLocalSigningTrustTests {
         #expect(throws: (any Error).self) {
             try PeekabooBridgeLocalSigningTrust.load(from: linked.appendingPathComponent(file.lastPathComponent))
         }
-        #expect(chmod(directory.path, 0o770) == 0)
+        #expect(Darwin.chmod(directory.path, 0o770) == 0)
         #expect(throws: (any Error).self) { try PeekabooBridgeLocalSigningTrust.load(from: file) }
     }
 
@@ -231,6 +231,62 @@ struct PeekabooBridgeLocalSigningTrustTests {
             anchoredSignatureValidationProvider: { _ in validated })
     }
 
+    @Test(arguments: ["file", "directory", "ancestor", "inherited"])
+    func `extended ACL grants cannot bypass private POSIX modes`(target: String) throws {
+        let root = try Self.makeDirectory()
+        defer {
+            try? Self.chmod(["-RN", root.path])
+            try? FileManager.default.removeItem(at: root)
+        }
+        if target == "inherited" {
+            try Self.chmod(["+a", "everyone allow read,write,file_inherit,directory_inherit", root.path])
+        }
+        let directory = root.appendingPathComponent("private", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        let file = try Self.writePolicy(in: directory)
+        if target != "inherited" {
+            let path = target == "file" ? file.path : (target == "directory" ? directory.path : root.path)
+            try Self.chmod(["+a", "everyone allow read,write", path])
+        }
+        try Self.chmod(["600", file.path])
+        try Self.chmod(["700", directory.path])
+        let fileAttributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        let directoryAttributes = try FileManager.default.attributesOfItem(atPath: directory.path)
+        #expect((fileAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        #expect((directoryAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+        #expect(throws: (any Error).self) { try PeekabooBridgeLocalSigningTrust.load(from: file) }
+    }
+
+    @Test
+    func `deny only ancestor ACLs preserve private policy access`() throws {
+        let root = try Self.makeDirectory()
+        defer {
+            try? Self.chmod(["-RN", root.path])
+            try? FileManager.default.removeItem(at: root)
+        }
+        let directory = root.appendingPathComponent("private", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        let file = try Self.writePolicy(in: directory)
+        try Self.chmod(["+a", "everyone deny delete", root.path])
+        #expect(try PeekabooBridgeLocalSigningTrust.load(from: file).certificateSHA256 == Self.fingerprint)
+    }
+
+    @Test
+    func `ACL inspection failures reject the descriptor`() {
+        #expect(throws: (any Error).self) { try PeekabooBridgeLocalSigningTrust.validatePrivateACL(of: -1) }
+    }
+
+    private static func chmod(_ arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/chmod")
+        process.arguments = arguments
+        try process.run()
+        process.waitUntilExit()
+        try #require(process.terminationStatus == 0)
+    }
+
     private static func makeDirectory() throws -> URL {
         let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent(".build/local-signing-tests-\(UUID().uuidString)")
@@ -244,7 +300,7 @@ struct PeekabooBridgeLocalSigningTrustTests {
     private static func writePolicy(in directory: URL, json: String = policyJSON) throws -> URL {
         let file = directory.appendingPathComponent("bridge-trust.json")
         try Data(json.utf8).write(to: file)
-        #expect(chmod(file.path, 0o600) == 0)
+        #expect(Darwin.chmod(file.path, 0o600) == 0)
         return file
     }
 

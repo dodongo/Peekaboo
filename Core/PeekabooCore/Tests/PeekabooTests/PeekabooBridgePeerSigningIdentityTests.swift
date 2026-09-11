@@ -328,7 +328,7 @@ struct PeekabooBridgePeerSigningIdentityTests {
     }
 
     @Test
-    func `signing identity preserves application identifier team fallback`() {
+    func `application identifier entitlement cannot manufacture a signing team`() {
         let identity = PeekabooBridgeHost.signingIdentity(pid: getpid()) { _ in
             [
                 kSecCodeInfoIdentifier as String: "boo.peekaboo.peekaboo",
@@ -339,7 +339,7 @@ struct PeekabooBridgePeerSigningIdentityTests {
         }
 
         #expect(identity?.bundleIdentifier == "boo.peekaboo.peekaboo")
-        #expect(identity?.teamIdentifier == "FWJYW4S8P8")
+        #expect(identity?.teamIdentifier == nil)
     }
 
     private static func socketPair() throws -> (reader: Int32, writer: Int32) {
