@@ -451,12 +451,15 @@ struct PeekabooBridgeBrowserClientTests {
         }
     }
 
-    @Test
+    @Test(arguments: [false, true])
     @MainActor
-    func `current client binds result reads and legacy mutations to exact receipts`() async throws {
+    func `current client binds result reads and legacy mutations to exact receipts`(
+        reportsProviderEpoch: Bool) async throws
+    {
         let socketPath = "/tmp/peekaboo-current-browser-routing-\(UUID().uuidString).sock"
         let services = StubServices()
         services.browserConnectionReceipt = Self.browserReceipt
+        services.browserProviderSessionEpoch = reportsProviderEpoch ? UUID() : nil
         let server = PeekabooBridgeServer(
             services: services,
             hostKind: .gui,
@@ -476,6 +479,7 @@ struct PeekabooBridgeBrowserClientTests {
             teamIdentifier: nil,
             processIdentifier: getpid()))
         #expect(handshake.operationAttestation != nil)
+        #expect(handshake.hostCapabilities?.contains(PeekabooBridgeHostCapability.browserConnectionHandoff) != true)
 
         let read = try await client.browserExecuteResult(.init(
             toolName: "list_pages",
@@ -489,6 +493,8 @@ struct PeekabooBridgeBrowserClientTests {
         #expect(services.lastExpectedBrowserConnectionReceipt == Self.browserReceipt)
         #expect(services.lastBrowserExecute?.expectedConnectionReceipt == Self.browserReceipt)
         #expect(services.lastBrowserExecute?.connectionPolicy == .requireExistingLiveReceipt)
+        #expect(services.lastBrowserExecute?.sessionID == nil)
+        #expect(services.lastBrowserExecute?.expectedProviderSessionEpoch == nil)
 
         let mutation = try await client.browserExecute(.init(
             toolName: "click",
@@ -496,6 +502,22 @@ struct PeekabooBridgeBrowserClientTests {
             channel: "stable"))
         #expect(!mutation.isError)
         #expect(services.lastExpectedBrowserConnectionReceipt == Self.browserReceipt)
+        #expect(services.lastBrowserExecute?.sessionID == nil)
+        #expect(services.lastBrowserExecute?.expectedProviderSessionEpoch == nil)
+
+        services.lastBrowserExecute = nil
+        do {
+            _ = try await client.browserExecuteResult(.init(
+                toolName: "list_pages",
+                arguments: [:],
+                channel: "stable",
+                sessionID: UUID()))
+            Issue.record("Expected unauthenticated scoped browser execution to be refused")
+        } catch let error as PeekabooBridgeErrorEnvelope {
+            #expect(error.code == .operationNotSupported)
+            #expect(error.message == "Bridge protocol 1.38 authenticated browser handoff is unavailable")
+        }
+        #expect(services.lastBrowserExecute == nil)
         await host.stop()
     }
 
