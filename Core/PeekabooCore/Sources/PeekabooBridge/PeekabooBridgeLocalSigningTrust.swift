@@ -66,6 +66,7 @@ struct PeekabooBridgeLocalSigningTrust: Decodable, Equatable, Sendable {
         var directory = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
         guard directory >= 0 else { throw PolicyError.unsafeFile }
         defer { close(directory) }
+        try self.validatePrivateACL(of: directory)
         for (index, component) in components.dropFirst().dropLast().enumerated() {
             let next = openat(directory, component, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
             guard next >= 0 else {
@@ -82,6 +83,7 @@ struct PeekabooBridgeLocalSigningTrust: Decodable, Equatable, Sendable {
                   info.st_uid == geteuid() || info.st_uid == 0,
                   info.st_mode & 0o022 == 0
             else { throw PolicyError.unsafeFile }
+            try self.validatePrivateACL(of: directory)
             if index == components.count - 3 {
                 guard info.st_uid == geteuid(), info.st_mode & 0o7777 == 0o700 else {
                     throw PolicyError.unsafeFile
@@ -100,6 +102,7 @@ struct PeekabooBridgeLocalSigningTrust: Decodable, Equatable, Sendable {
         guard fstat(descriptor, &before) == 0, self.isPrivatePolicyFile(before) else {
             throw PolicyError.unsafeFile
         }
+        try self.validatePrivateACL(of: descriptor)
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 4097)
         while data.count <= 4096 {
@@ -122,6 +125,7 @@ struct PeekabooBridgeLocalSigningTrust: Decodable, Equatable, Sendable {
               before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
               before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec
         else { throw PolicyError.unsafeFile }
+        try self.validatePrivateACL(of: descriptor)
         return try JSONDecoder().decode(Self.self, from: data)
     }
 
@@ -132,6 +136,33 @@ struct PeekabooBridgeLocalSigningTrust: Decodable, Equatable, Sendable {
     func acceptsHost(socketPath: String, bundleIdentifier: String?, certificateSHA256: String?) -> Bool {
         socketPath == PeekabooBridgeConstants.peekabooSocketPath &&
             bundleIdentifier == "boo.peekaboo.mac" && certificateSHA256 == self.certificateSHA256
+    }
+
+    static func validatePrivateACL(of descriptor: Int32) throws {
+        guard let acl = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) else {
+            // Darwin reports ENOENT for a valid descriptor without an extended ACL.
+            guard errno == ENOENT else { throw PolicyError.unsafeFile }
+            return
+        }
+        defer { acl_free(UnsafeMutableRawPointer(acl)) }
+        guard acl_valid(acl) == 0 else { throw PolicyError.unsafeFile }
+        var entry: acl_entry_t?
+        var position = ACL_FIRST_ENTRY.rawValue
+        while true {
+            errno = 0
+            let result = acl_get_entry(acl, position, &entry)
+            if result == -1 {
+                guard errno == EINVAL else { throw PolicyError.unsafeFile }
+                return
+            }
+            guard result == 0, let entry else { throw PolicyError.unsafeFile }
+            var tag = ACL_UNDEFINED_TAG
+            // Deny-only ACLs retain normal macOS home-directory protections without adding access grants.
+            guard acl_get_tag_type(entry, &tag) == 0, tag == ACL_EXTENDED_DENY else {
+                throw PolicyError.unsafeFile
+            }
+            position = ACL_NEXT_ENTRY.rawValue
+        }
     }
 
     private static func isPrivatePolicyFile(_ info: stat) -> Bool {
