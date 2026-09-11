@@ -117,9 +117,11 @@ validation.
   epoch, and execution re-presents that epoch with the exact connection receipt; the remote client remints page and
   element references for its caller and never falls back to the root connection.
 - The selected runtime host owns the `chrome-devtools-mcp` child process and per-page snapshot UID state.
-- Separate legacy CLI invocations require the same current-build reusable daemon. Bridge-scoped handoff instead
-  requires a current host advertising authenticated browser-session bootstrap/control; older hosts reject it before
-  the MCP server starts.
+- Separate legacy CLI invocations require the same persistent Bridge host with browser connection receipts and
+  host-generation identity. An explicit socket can select Peekaboo.app without daemon
+  or caller-local fallback; otherwise the CLI selects a current-build reusable daemon. Bridge-scoped handoff still
+  requires an authenticated caller and a current daemon advertising browser-session bootstrap/control; unsupported
+  hosts reject it before the MCP server starts.
 - Native channel connections and explicit loopback URLs both resolve to an exact WebSocket and are eligible for
   receipt-bound execution. Isolated-profile children remain unbound because the child does not report a pinnable
   browser identity.

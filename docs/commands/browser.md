@@ -60,7 +60,10 @@ completed, or the intended effect occurred. Observe the intended page before dec
 The CLI retains its existing numeric page ID and snapshot-local UID compatibility boundary; this action does not add
 durable cross-invocation capabilities. Persistent MCP/Agent callers use the caller-owned references described below.
 
-Browser state is owned by one current-build reusable daemon across CLI invocations. Channel connection requires exactly
+Browser state is owned by one persistent Bridge host across CLI invocations. An explicitly selected Peekaboo.app host
+is supported when it advertises browser connection receipts and host-generation identity. Without an explicit socket,
+the CLI selects a current-build reusable daemon. An explicit socket never falls
+back to another host or caller-local execution. Channel connection requires exactly
 one running official Google-signed Chrome process (Team ID `EQHXZ8M8AV`). Peekaboo pins the signed channel identifier,
 Team ID, and CDHash to its PID generation, safely reads that channel's standard `DevToolsActivePort`, proves its unique
 loopback listener belongs to the detected PID/process generation, keeps the exact WebSocket pending through Chrome's
@@ -68,11 +71,11 @@ approval prompt, verifies it with CDP `Browser.getVersion`, rechecks signer and 
 only that same WebSocket identity. When more than one process shares a channel, use `--browser-url` with one loopback
 DevTools HTTP endpoint. That explicit URL is also the compatibility path for custom or non-Google-signed debuggable
 browsers and does not claim native channel signer authority. Connection output includes the combined process and
-DevTools identity receipt. If the daemon, Chrome generation, signer, listening socket, or endpoint changes, later calls
+DevTools identity receipt. If the host generation, Chrome generation, signer, listening socket, or endpoint changes, later calls
 fail and require an explicit reconnect.
 
 Browser `type` and `press-key` require `--uid` from a fresh snapshot. Peekaboo focuses that exact page element and sends
-the keyboard operation as one daemon-owned sequence rather than inheriting whichever control another caller focused.
+the keyboard operation as one host-owned sequence rather than inheriting whichever control another caller focused.
 Persistent MCP and Agent callers, including Bridge-routed Agents, receive opaque, session-owned page and element
 references instead of these raw CLI compatibility values. Those references bind the exact provider child and cannot
 cross caller sessions. A newer snapshot or navigation expires the affected page's element references. Closing a page
