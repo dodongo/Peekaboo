@@ -45,6 +45,13 @@ a concrete snapshot they remain diagnostic-only unless selected with `--bridge-s
 
 There is **no auto-launch** of Peekaboo.app.
 
+Peekaboo.app is the GUI/Bridge host; its bundle executable is not the CLI, even when a
+case-insensitive filesystem accepts the lowercase name `peekaboo`. CLI-style invocations such as
+`Peekaboo.app/Contents/MacOS/peekaboo --version` or `Peekaboo see --no-elements` print installation
+guidance to stderr and exit with status 64 before registering capture capability or starting a Bridge
+listener. Use the separate `peekaboo` binary from Homebrew or `peekaboo-macos-universal.tar.gz`.
+The app's `--background-bridge-host`, `--interactive`, and Cocoa/LaunchServices launch arguments remain supported.
+
 `pnpm app:restart` remains the contributor workflow: it builds Debug with the repository's ordinary
 local Xcode signing configuration. It does not require or inject an OpenClaw Foundation identity.
 Managed replacement of the stable TCC app is deliberately
@@ -154,6 +161,9 @@ those app-only services are injected separately; moving them into the embedded r
 - Listener acceptance is kernel-readiness-driven: one coalesced notification drains the queued connection backlog to
   `EAGAIN`, while source cancellation owns descriptor closure and bounded shutdown waits for queued handlers to drain.
 
+Receiptless offers through protocol `1.28` omit `clientCapabilities` rather than sending an empty array.
+Receipt-capable `1.29` and newer offers retain version-gated capabilities, including ownership diagnostics.
+
 Protocol `1.3` adds element action operations:
 
 - `setValue` for direct accessibility value mutation.
@@ -223,6 +233,27 @@ explicit remote `modern` or `classic` selection before transport when this capab
 enabled `desktopObservation` operation is absent; an older host cannot silently ignore the field
 and run its default backend. `auto` remains compatible, and request-scoped selection does not alter
 the long-lived daemon's fallback policy.
+
+Capture support and startup preparation are separate, additive handshake contracts at the existing protocol version.
+`screenCaptureKitOwnershipEnforcement` and `classicCaptureWithoutScreenCaptureKit` are derived from the host's concrete
+service contracts and allowed observation operation. Caller-supplied capability strings cannot manufacture either
+proof. The older `screenCaptureKitProcessOwnership` capability remains conservative and is removed if registration or
+preparation fails, preserving old-client wire safety.
+
+Optional `screenCaptureKitReadiness` records the preparation observation and typed failure, including all original
+blocker identities that were available. A ready observation is permission to attempt SCK, not actual ownership.
+Unknown or missing readiness supplies no new SCK authority. A current blocked host can still accept explicit classic
+on that same socket when it proves no in-process SCK, while auto and modern return the typed refusal before capture.
+AX-only operations remain independent. Typed ownership errors also survive capture, permission, and Bridge error
+conversion; a refused SCK entry does not erase an earlier desktop mutation outcome.
+
+Typed terminal error fields additionally require the raw client offer `screenCaptureKitOwnershipDiagnostics`, bound to
+an authenticated operation session. Before computing the terminal response digest and signing its receipt, the host
+removes only the new diagnostic fields for sessions without that offer. This preserves shipped clients that decode
+unknown fields away before reconstructing the signed response digest. Offered sessions retain all typed blockers and
+any earlier mutation outcome. The offer works at existing signed-session protocol versions; receiptless requests
+(including older protocols and unknown offers) retain their legacy error shape. Handshake readiness is not part of a
+terminal operation response digest and remains additive.
 
 Protocol `1.22` adds process-generation receipts to process-targeted typing and clicks. Current CLI, Agent, and MCP background input retain the application discovery receipt through Bridge admission and native dispatch. Typing revalidates it before every emitted unit; clicks validate before dispatch and report a retry-unsafe indeterminate outcome if the generation changes after dispatch. Process-targeted Cmd+V uses the generation-pinned hotkey contract introduced in 1.19. New clients refuse older hosts before sending these inputs because an older decoder could otherwise ignore the optional receipt and route input using only a reusable PID. Legacy raw-PID payloads remain decodable for old clients, but current user-facing paths never select them.
 

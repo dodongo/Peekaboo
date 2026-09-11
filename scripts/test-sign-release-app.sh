@@ -69,6 +69,11 @@ set -euo pipefail
 path="${!#}"
 if [[ -f "$path" ]] && grep -Fqx MACHO "$path"; then
   printf 'Mach-O 64-bit executable arm64\n'
+  if [[ "${SIGN_TEST_EXTENDED_FILE_OUTPUT:-0}" == 1 ]]; then
+    sleep 0.01
+    printf '%65536s\n' ''
+  fi
+  [[ "${SIGN_TEST_FILE_ERROR:-0}" != 1 ]] || exit 86
 else
   printf 'data\n'
 fi
@@ -160,6 +165,7 @@ printf '<plist version="1.0"><dict/></plist>\n' >"$entitlements"
 app="$TEST_DIR/Product With Spaces/Peekaboo.app"
 make_fixture "$app"
 export SIGN_TEST_FAIL_FRAMEWORK_ONCE=1
+export SIGN_TEST_EXTENDED_FILE_OUTPUT=1
 "$ROOT_DIR/scripts/sign-release-app.sh" \
   --app "$app" \
   --entitlements "$entitlements" \
@@ -208,6 +214,16 @@ fi
   fail 'entitlements must be applied exactly once'
 tail -1 "$SIGN_TEST_LOG" | grep -Fq "<--entitlements><$entitlements>" || fail 'outer app was not signed with entitlements last'
 
+cat >"$TEST_DIR/nm" <<'EOF'
+#!/usr/bin/env bash
+printf '                 U _harmless\n'
+EOF
+chmod 755 "$TEST_DIR/nm"
+PEEKABOO_FILE_BIN="$TEST_DIR/file" PEEKABOO_CODESIGN_BIN="$TEST_DIR/codesign" \
+  PEEKABOO_NM_BIN="$TEST_DIR/nm" \
+  "$ROOT_DIR/scripts/verify-native-only-app.sh" --app "$app"
+unset SIGN_TEST_EXTENDED_FILE_OUTPUT
+
 assert_refused_without_signing() {
   local label="$1"
   local expected_error="$2"
@@ -220,6 +236,9 @@ assert_refused_without_signing() {
   grep -Fq "$expected_error" "$TEST_DIR/$label.err" || fail "$label returned the wrong refusal"
   [[ ! -s "$SIGN_TEST_LOG" ]] || fail "$label reached codesign before refusal"
 }
+
+SIGN_TEST_FILE_ERROR=1 assert_refused_without_signing file-inspection 'not Mach-O' \
+  --app "$app" --entitlements "$entitlements" --sign-identity "$identity" --timestamp-url "$timestamp_url"
 
 symlink_source="$TEST_DIR/symlink source/Peekaboo.app"
 make_fixture "$symlink_source"

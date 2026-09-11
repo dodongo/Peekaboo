@@ -106,6 +106,8 @@ set -euo pipefail
 
 if [[ "${1:-}" == "-b" && "${2:-}" == */Contents/MacOS/Peekaboo ]]; then
   printf 'Mach-O 64-bit executable\n'
+  sleep 0.01
+  printf '%65536s\n' ''
 else
   /usr/bin/file "$@"
 fi

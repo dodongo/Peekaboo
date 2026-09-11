@@ -709,6 +709,21 @@ public actor PeekabooBridgeClient {
         }
     }
 
+    nonisolated static func offeredCapabilities(for protocolVersion: PeekabooBridgeProtocolVersion) -> [String] {
+        var capabilities: [String] = []
+        if protocolVersion >= PeekabooBridgeConstants.attestedOperationReceiptVersion {
+            capabilities.append(PeekabooBridgeClientCapability.screenCaptureKitOwnershipDiagnostics)
+        }
+        if protocolVersion >= PeekabooBridgeConstants.producerBoundSnapshotReferencesVersion {
+            capabilities.append(PeekabooBridgeClientCapability.producerBoundSnapshotReferences)
+            capabilities.append(PeekabooBridgeClientCapability.targetedClickAccessibilityValueDelivery)
+        }
+        if protocolVersion >= PeekabooBridgeConstants.browserConnectionHandoffVersion {
+            capabilities.append(PeekabooBridgeClientCapability.browserConnectionHandoff)
+        }
+        return capabilities
+    }
+
     private func performHandshake(
         inputs: PeekabooBridgeClientHandshakeInputs,
         protocolVersion: PeekabooBridgeProtocolVersion,
@@ -721,13 +736,8 @@ public actor PeekabooBridgeClient {
             requestedHostKind: inputs.requestedHost,
             operationClientInstanceID: self.operationClientInstanceID,
             replacingOperationSessionID: replacingOperationSessionID,
-            clientCapabilities: protocolVersion >= PeekabooBridgeConstants.producerBoundSnapshotReferencesVersion
-                ? ([
-                    PeekabooBridgeClientCapability.producerBoundSnapshotReferences,
-                    PeekabooBridgeClientCapability.targetedClickAccessibilityValueDelivery,
-                ] + (protocolVersion >= PeekabooBridgeConstants.browserConnectionHandoffVersion
-                    ? [PeekabooBridgeClientCapability.browserConnectionHandoff]
-                    : []))
+            clientCapabilities: protocolVersion >= PeekabooBridgeConstants.attestedOperationReceiptVersion
+                ? Self.offeredCapabilities(for: protocolVersion)
                 : nil)
         let reply = try await self.sendCarryingActionOutcome(.handshake(payload), timeoutSec: timeoutSec)
         try self.validateTrustedConnectedHost(reply.connectedHost)
@@ -765,17 +775,13 @@ public actor PeekabooBridgeClient {
         }
     }
 
-    // Local patch: the locally built host app is signed with a local identity that carries no
-    // Apple TeamID, so a live same-UID host is trusted in addition to allowlisted release teams.
-    // This mirrors the host's same-UID-only client policy in PeekabooApp.startBridgeHost.
+    /// The locally built host app has no Apple TeamID, so a live same-UID host is trusted
+    /// in addition to allowlisted release teams, matching PeekabooApp.startBridgeHost.
     private static func isTrustedConnectedHost(
         _ connectedHost: PeekabooBridgeConnectedHostIdentity,
         liveCodeSignatureHash: String,
         trustedHostTeamIDs: Set<String>) -> Bool
     {
-        if connectedHost.liveIdentity.effectiveUserIdentifier == getuid() {
-            return true
-        }
         guard let signingIdentity = connectedHost.signingIdentity,
               signingIdentity.codeSignatureHash == liveCodeSignatureHash,
               let signingTeamIdentifier = signingIdentity.teamIdentifier

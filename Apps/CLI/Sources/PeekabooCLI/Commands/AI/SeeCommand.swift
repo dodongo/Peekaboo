@@ -619,7 +619,10 @@ RuntimeBackedCommand {
                         annotatedScreenshotPath: annotatedPath
                     )
                     try Task.checkCancellation()
-                    annotatedData = try Data(contentsOf: URL(fileURLWithPath: annotatedPath))
+                    annotatedData = try SeePublicationArtifact.readBounded(
+                        at: annotatedPath,
+                        label: "annotated screenshot"
+                    )
                 }
                 logger.operationComplete(
                     "generate_annotations",

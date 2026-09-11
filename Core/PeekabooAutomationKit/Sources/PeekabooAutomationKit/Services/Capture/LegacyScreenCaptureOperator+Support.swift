@@ -9,7 +9,7 @@ extension LegacyScreenCaptureOperator {
     func captureWindowWithCGWindowList(
         windowID: CGWindowID,
         correlationId: String,
-        scale: CaptureScalePreference) async throws -> LegacyCapturedRaster
+        geometry: LegacyWindowCaptureGeometry) async throws -> LegacyCapturedRaster
     {
         let allowsPrivateSCKLookup = ScreenCaptureService.captureEnginePreference != .legacy
         if Self.privateScreenCaptureKitWindowLookupEnabled(), allowsPrivateSCKLookup {
@@ -17,8 +17,10 @@ extension LegacyScreenCaptureOperator {
                 let image = try await self.captureWindowWithPrivateScreenCaptureKit(
                     windowID: windowID,
                     correlationId: correlationId,
-                    scale: scale)
-                return LegacyCapturedRaster(image: image)
+                    scale: geometry.scalePlan.preference)
+                return try geometry.deliver(
+                    LegacyCapturedRaster(image: image),
+                    sourceScale: geometry.scalePlan.outputScale)
             } catch {
                 guard PrivateScreenCaptureKitWindowLookupPolicy.allowsSystemFallback(
                     after: error,
@@ -42,9 +44,10 @@ extension LegacyScreenCaptureOperator {
         }
 
         do {
-            return try await self.captureWindowWithSystemScreencapture(
+            let raster = try await self.captureWindowWithSystemScreencapture(
                 windowID: windowID,
                 correlationId: correlationId)
+            return try geometry.deliver(raster, sourceScale: geometry.scalePlan.nativeScale)
         } catch {
             self.logger.error(
                 "Isolated system screencapture window capture failed",
@@ -112,13 +115,11 @@ extension LegacyScreenCaptureOperator {
 
     func scaleFactor(for bounds: CGRect) -> CGFloat {
         let screens = NSScreen.screens
-        let appKitBounds = GlobalScreenCoordinateGeometry.appKitRect(
-            fromGlobalDisplay: bounds,
-            primaryScreenFrame: screens.first?.frame)
-        if let screen = screens.first(where: { $0.frame.contains(appKitBounds) }) {
-            return screen.backingScaleFactor
+        guard let index = LegacyWindowCaptureGeometry.screenIndex(for: bounds, screenFrames: screens.map(\.frame))
+        else {
+            return 1.0
         }
-        return screens.first?.backingScaleFactor ?? 1.0
+        return screens[index].backingScaleFactor
     }
 
     func scalePlan(
@@ -129,7 +130,7 @@ extension LegacyScreenCaptureOperator {
         return ScreenCaptureScaleResolver.plan(
             preference: preference,
             screenBackingScaleFactor: scaleFactor,
-            fallbackPixelWidth: Int(bounds.width * scaleFactor),
+            fallbackPixelWidth: Int(exactly: bounds.width * scaleFactor) ?? 0,
             frameWidth: bounds.width)
     }
 

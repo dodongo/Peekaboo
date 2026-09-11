@@ -27,7 +27,7 @@ pipe_build_output() {
 select_identity() {
     local preferred available first
     preferred="$(security find-identity -p codesigning -v 2>/dev/null \
-        | awk -F'\"' '/Developer ID Application/ { print $2; exit }')"
+        | awk -F'\"' '/Developer ID Application/ && !found { print $2; found=1 }')"
     if [ -n "$preferred" ]; then
         echo "$preferred"
         return
@@ -35,7 +35,7 @@ select_identity() {
     available="$(security find-identity -p codesigning -v 2>/dev/null \
         | sed -n 's/.*\"\\(.*\\)\"/\\1/p')"
     if [ -n "$available" ]; then
-        first="$(printf '%s\n' "$available" | head -n1)"
+        first="$(printf '%s\n' "$available" | sed -n '1p')"
         echo "$first"
         return
     fi

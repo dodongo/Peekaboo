@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Fixture releases must never inherit the real publication output or manifest.
+unset RELEASE_DIR MAC_RELEASE_MANIFEST
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_ROOT="$(mktemp -d /tmp/peekaboo-release-reuse-test.XXXXXX)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -65,6 +68,14 @@ cat >"$FAKE_BIN/file" <<'FILE'
 set -euo pipefail
 printf '%s\n' file-macho >>"${PEEKABOO_REUSE_TEST_LOG:?}"
 printf '%s: Mach-O universal binary with 2 architectures\n' "$1"
+if [[ "${PEEKABOO_REUSE_TEST_FILE_OUTPUT:-single}" == error ]]; then
+  exit 86
+fi
+if [[ "${PEEKABOO_REUSE_TEST_FILE_OUTPUT:-single}" == extended ]]; then
+  sleep 0.05
+  printf '%65536s\n' ''
+  printf '%s\n' file-output-drained >>"${PEEKABOO_REUSE_TEST_LOG:?}"
+fi
 FILE
 
 cat >"$FAKE_BIN/codesign" <<'CODESIGN'
@@ -187,6 +198,7 @@ run_release() {
       PEEKABOO_REUSE_TEST_ARCHS="${3:-x86_64 arm64}" \
       PEEKABOO_REUSE_REAL_NODE="$REAL_NODE" \
       PEEKABOO_REUSE_MUTATE_DURING_PREFLIGHT="${4:-0}" \
+      PEEKABOO_REUSE_TEST_FILE_OUTPUT="${5:-single}" \
       ./scripts/release-binaries.sh --reuse-built-cli --skip-mac-app --no-appcast
   )
 }
@@ -200,6 +212,17 @@ fi
 grep -Fq 'one clean exact source commit' "$TEST_ROOT/dirty.out"
 [[ ! -s "$VERIFY_LOG" ]]
 rm -f "$FIXTURE_ROOT/untracked-input"
+
+: >"$VERIFY_LOG"
+if run_release "$FIXTURE_COMMIT" safe 'x86_64 arm64' 0 error >"$TEST_ROOT/file-error.out" 2>&1; then
+  echo 'reuse accepted a failed file inspection after matching Mach-O output' >&2
+  exit 1
+fi
+grep -Fq 'binary is not Mach-O' "$TEST_ROOT/file-error.out"
+if grep -Fq candidate-executed "$VERIFY_LOG"; then
+  echo 'candidate was executed after file inspection failed' >&2
+  exit 1
+fi
 
 : >"$VERIFY_LOG"
 if run_release "$FIXTURE_COMMIT" forbidden >"$TEST_ROOT/entitlements.out" 2>&1; then
@@ -234,13 +257,16 @@ grep -Fq candidate-executed "$VERIFY_LOG"
 
 : >"$VERIFY_LOG"
 candidate_sha_before="$(shasum -a 256 "$FIXTURE_ROOT/peekaboo" | awk '{print $1}')"
-run_release "$FIXTURE_COMMIT" >"$TEST_ROOT/success.out" 2>&1
+if ! run_release "$FIXTURE_COMMIT" safe 'x86_64 arm64' 0 extended >"$TEST_ROOT/success.out" 2>&1; then
+  echo 'reuse rejected a valid Mach-O candidate with extended file output' >&2
+  exit 1
+fi
 grep -Fq 'Release artifacts created successfully' "$TEST_ROOT/success.out"
 [[ "$(shasum -a 256 "$FIXTURE_ROOT/peekaboo" | awk '{print $1}')" == "$candidate_sha_before" ]]
 
 first_candidate=$(grep -n -m1 '^candidate-executed$' "$VERIFY_LOG" | cut -d: -f1)
 for required_gate in \
-  file-macho codesign-verify signer-requirement entitlements native-imports native-strings \
+  file-macho file-output-drained codesign-verify signer-requirement entitlements native-imports native-strings \
   runtime-libraries signer-metadata online-notarization architectures; do
   gate_line=$(grep -n -m1 "^${required_gate}$" "$VERIFY_LOG" | cut -d: -f1)
   [[ -n "$gate_line" && "$gate_line" -lt "$first_candidate" ]] || {

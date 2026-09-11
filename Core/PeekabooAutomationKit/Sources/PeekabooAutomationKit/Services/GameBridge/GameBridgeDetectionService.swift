@@ -4,7 +4,7 @@ import Foundation
 /// Detects UI elements in SDL/GPU-rendered game windows by reading a JSON
 /// accessibility manifest that the game writes each frame.
 ///
-/// Protocol: the game writes `~/.{appname}/accessibility.json` atomically.
+/// Protocol: the game publishes immutable frames at `~/.{appname}/accessibility.json` by atomic rename.
 /// Peekaboo reads this file during element detection when the target window
 /// belongs to a known game-bridge app.
 ///
@@ -109,11 +109,36 @@ public final class GameBridgeDetectionService: Sendable {
         now: Date = Date(),
         maxManifestAge: TimeInterval = 5) -> GameManifest?
     {
+        self.readManifest(
+            appName: appName,
+            manifestRootURL: manifestRootURL,
+            now: now,
+            maxManifestAge: maxManifestAge,
+            environment: ProcessInfo.processInfo.environment)
+    }
+
+    static func readManifest(
+        appName: String,
+        manifestRootURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        now: Date = Date(),
+        maxManifestAge: TimeInterval = 5,
+        environment: [String: String]) -> GameManifest?
+    {
         guard let relativePath = knownApps[appName] else { return nil }
         let manifestURL = manifestRootURL.appendingPathComponent(relativePath)
 
         guard self.isFreshManifest(at: manifestURL, now: now, maxAge: maxManifestAge) else { return nil }
-        guard let data = try? Data(contentsOf: manifestURL) else { return nil }
+        let maximumBytes: Int
+        if let configured = environment["PEEKABOO_GAMEBRIDGE_MAX_MANIFEST_BYTES"], !configured.isEmpty {
+            guard let limit = Int(configured), limit > 0 else { return nil }
+            maximumBytes = limit
+        } else {
+            maximumBytes = Int.max
+        }
+        guard let data = try? BoundedArtifactFile(
+            path: manifestURL.path,
+            maximumBytes: maximumBytes).readImmutableFrame()
+        else { return nil }
         return try? JSONDecoder().decode(GameManifest.self, from: data)
     }
 

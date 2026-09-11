@@ -5,6 +5,44 @@ All notable changes to Peekaboo CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 4.3.3 - 2026-09-08
+
+**Highlights:** Prevent accidental GUI host launches and read Firestaff manifests more safely.
+
+- Refuse CLI-style invocations of Peekaboo.app before capture or Bridge startup, with guidance to use the separate `peekaboo` CLI binary. #706.
+- Read immutable Firestaff frames across atomic updates, reject detectable in-place rewrites, and add opt-in byte limits while preserving the unlimited default; thanks @SebTardif for #703.
+- Honor `config edit --print-path` without creating a configuration file or launching an editor. #707.
+- Fix generated Homebrew formula smoke tests to recognize the v4 `Usage` header. #702.
+- Prevent intermittent release verification failures when inspecting universal binaries, and keep release test fixtures out of publication directories.
+
+## 4.3.2 - 2026-09-07
+
+**Highlights:** Explicit typing dispatch acceptance for scripts and more reliable release recovery.
+
+- Let standalone scripts opt into `type --accept-dispatched` while preserving strict defaults, unverified outcomes, retry warnings, and confirmed-only character counts; thanks @jandubois for #686.
+- Recover authenticated draft releases and accept npm's singleton-array publication metadata without weakening validation.
+- Treat release-preparation binary paths literally during permission, architecture, and help checks to prevent shell interpretation.
+- Fix the screenshot command documentation's link to the exact-window capture testing guide.
+- Update pnpm setup in release validation and hosted build preparation to 6.1.0.
+
+## 4.3.1 - 2026-09-05
+
+**Highlights:** Exact popup and sheet screenshots, bounded image reads, and more reliable scripted commands.
+
+### Fixed
+- Capture exact popup and sheet extents without attached windows, reject mismatched images before publishing coordinates, and preserve 1×/Retina mapping without double-scaling. #689.
+- Cap observation and MCP screenshot reads and reject files that grow or are replaced during reading; thanks @SebTardif for #683.
+- Bound `see` publication reads while preserving annotations larger than their raw screenshots; thanks @SebTardif for #688.
+- Start the `capture action` TERM grace after signal dispatch so delayed cancellation or timeout handling does not prematurely kill graceful children; retain the absolute completion deadline. #692.
+- Add an optional `config edit --timeout` for scripted editor waits while preserving unlimited interactive editing; thanks @SebTardif for #681.
+- Bound debug build-staleness Git probes and drain their output so large dirty worktrees still report stale builds; thanks @SebTardif for #682.
+- Preserve GUI capture readiness after ScreenCaptureKit preparation fails, allowing explicit classic recovery on the same proven host while retaining typed blockers, automatic-engine behavior, and older clients' signed receipts. #684.
+- Preserve omitted capability metadata in legacy Bridge 1.28 handshakes while retaining modern diagnostic negotiation. #692.
+- Verify ScreenCaptureKit owner and capability-marker close-on-fork protection through child descriptor behavior instead of SDK query bits, preserving atomic open flags.
+- Route Homebrew release updates and installation instructions through `openclaw/tap`.
+- Refresh Swift networking and crypto dependencies, pnpm, and Node setup tooling. #691.
+- Keep validation fixtures independent of operator credentials and live window IDs, and synchronize cleanup/disconnect checks with completed state transitions. #690, #692.
+
 ## [4.3.0] - 2026-09-02
 
 ### Highlights

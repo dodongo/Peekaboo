@@ -55,7 +55,7 @@ while IFS= read -r dependency; do
     codesign --verify --strict --verbose=2 "$library_path"
 
     if [ -n "$EXPECTED_IDENTITY" ] && [ "$EXPECTED_IDENTITY" != "-" ]; then
-        authority=$(codesign -dv --verbose=4 "$library_path" 2>&1 | sed -n 's/^Authority=//p' | head -1)
+        authority=$(codesign -dv --verbose=4 "$library_path" 2>&1 | sed -n 's/^Authority=//p' | sed -n '1p')
         [ "$authority" = "$EXPECTED_IDENTITY" ] || {
             echo "Swift compatibility library signer mismatch: expected '$EXPECTED_IDENTITY', got '$authority'" >&2
             exit 1
@@ -63,7 +63,7 @@ while IFS= read -r dependency; do
     fi
 
     if [ -n "$EXPECTED_TEAM_ID" ]; then
-        team_id=$(codesign -dv --verbose=4 "$library_path" 2>&1 | sed -n 's/^TeamIdentifier=//p' | head -1)
+        team_id=$(codesign -dv --verbose=4 "$library_path" 2>&1 | sed -n 's/^TeamIdentifier=//p' | sed -n '1p')
         [ "$team_id" = "$EXPECTED_TEAM_ID" ] || {
             echo "Swift compatibility library TeamIdentifier mismatch: expected '$EXPECTED_TEAM_ID', got '$team_id'" >&2
             exit 1
