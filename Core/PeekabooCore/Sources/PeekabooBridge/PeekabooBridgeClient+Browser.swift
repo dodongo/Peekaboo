@@ -432,7 +432,7 @@ extension PeekabooBridgeClient {
         }
         return request.binding(
             to: receipt,
-            providerSessionEpoch: status.providerSessionEpoch)
+            providerSessionEpoch: request.sessionID != nil ? status.providerSessionEpoch : nil)
     }
 
     private func directBrowserExecute(
