@@ -419,9 +419,6 @@ extension VerifyStateTool {
         case let .application(identifier):
             do {
                 let output = try await self.context.applications.listApplications()
-                guard case .success = output.summary.status, output.metadata.warnings.isEmpty else {
-                    return .unknown(Self.incompleteApplicationListReason(output))
-                }
                 let applications = output.data.applications
                 let exactMatches = applications.filter { application in
                     application.bundleIdentifier == identifier ||
@@ -429,9 +426,12 @@ extension VerifyStateTool {
                 }
                 switch exactMatches.count {
                 case 0:
+                    guard output.metadata.warnings.isEmpty else {
+                        return .unknown(Self.incompleteApplicationListReason(output))
+                    }
                     return .missing("Application '\(identifier)' is not running")
                 case 1:
-                    return .resolved(exactMatches[0])
+                    return Self.resolution(for: exactMatches[0])
                 default:
                     return .unknown(
                         "Application '\(identifier)' has multiple exact process matches; use pid to disambiguate")
@@ -442,18 +442,28 @@ extension VerifyStateTool {
         case let .pid(pid):
             do {
                 let output = try await self.context.applications.listApplications()
-                guard case .success = output.summary.status, output.metadata.warnings.isEmpty else {
-                    return .unknown(Self.incompleteApplicationListReason(output))
-                }
                 let applications = output.data.applications
                 guard let application = applications.first(where: { $0.processIdentifier == pid }) else {
+                    guard output.metadata.warnings.isEmpty else {
+                        return .unknown(Self.incompleteApplicationListReason(output))
+                    }
                     return .missing("PID \(pid) is not running")
                 }
-                return .resolved(application)
+                return Self.resolution(for: application)
             } catch {
                 return .unknown("PID resolution failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Warnings about unrelated processes (for example other users' daemons without a readable
+    /// process-start identity) must not make the target's own identity unknown.
+    private static func resolution(for application: ServiceApplicationInfo) -> ApplicationResolution {
+        let warnings = application.metadataWarnings ?? []
+        guard warnings.isEmpty else {
+            return .unknown("Application enumeration was incomplete: \(warnings.joined(separator: ", "))")
+        }
+        return .resolved(application)
     }
 
     private static func incompleteApplicationListReason(
