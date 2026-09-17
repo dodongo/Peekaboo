@@ -26,6 +26,19 @@ struct BrowserToolTests {
         #expect(BrowserMCPUserActivationPolicy.decision(for: call).requiresForegroundAuthority)
     }
 
+    @Test
+    func `Chrome DevTools config uses auto connect and privacy flags`() {
+        let config = BrowserMCPService.chromeDevToolsConfig(channel: .beta)
+
+        #expect(config.command.hasSuffix("npx"))
+        #expect(config.args.contains("chrome-devtools-mcp@1.6.0"))
+        #expect(config.args.contains("--experimentalPageIdRouting"))
+        #expect(config.args.contains("--auto-connect"))
+        #expect(config.args.contains("--channel=beta"))
+        #expect(config.args.contains("--no-usage-statistics"))
+        #expect(config.args.contains("--no-performance-crux"))
+    }
+
     @Test(arguments: ["page_id", "uid"])
     func `DOM click rejects missing target before provider entry`(missing: String) async throws {
         let client = UserActivationCountingBrowserMCPClient()

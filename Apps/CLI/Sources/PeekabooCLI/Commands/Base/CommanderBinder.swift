@@ -248,7 +248,7 @@ enum CommanderCLIBinder {
         if Self.requiresCallerLocalRuntime(commandType, parsedValues: parsedValues) {
             options.preferRemote = false
         } else if Self.prefersLocalRuntime(commandType), !values.flag("no-remote"),
-                  explicitBridgeSocket?.isEmpty ?? true {
+                  !hasExplicitBridgeSocket {
             options.preferRemote = false
         }
         if let socketPath = explicitBridgeSocket, !socketPath.isEmpty {

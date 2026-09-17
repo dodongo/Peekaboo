@@ -14,6 +14,7 @@ public struct PeekabooBridgePeer: Sendable {
     public let bundleIdentifier: String?
     public let teamIdentifier: String?
     let liveIdentity: PeekabooBridgeLivePeerIdentity?
+    let localCertificateSHA256: String?
 
     public init(
         processIdentifier: pid_t,
@@ -32,12 +33,14 @@ public struct PeekabooBridgePeer: Sendable {
         self.bundleIdentifier = bundleIdentifier
         self.teamIdentifier = teamIdentifier
         self.liveIdentity = nil
+        self.localCertificateSHA256 = nil
     }
 
     init(
         liveIdentity: PeekabooBridgeLivePeerIdentity,
         bundleIdentifier: String?,
-        teamIdentifier: String?)
+        teamIdentifier: String?,
+        localCertificateSHA256: String? = nil)
     {
         self.processIdentifier = liveIdentity.processIdentifier
         self.auditTokenProcessIdentifierVersion = liveIdentity.processIdentifierVersion
@@ -47,6 +50,7 @@ public struct PeekabooBridgePeer: Sendable {
         self.bundleIdentifier = bundleIdentifier
         self.teamIdentifier = teamIdentifier
         self.liveIdentity = liveIdentity
+        self.localCertificateSHA256 = localCertificateSHA256
     }
 }
 
@@ -767,7 +771,10 @@ public final class PeekabooBridgeServer {
             context: context)
     }
 
-    func validatePeerAuthorization(_ peer: PeekabooBridgePeer?) throws {
+    func validatePeerAuthorization(
+        _ peer: PeekabooBridgePeer?,
+        localSigningTrust: PeekabooBridgeLocalSigningTrust? = .current) throws
+    {
         guard !self.allowlistedTeams.isEmpty || !self.allowlistedBundles.isEmpty else { return }
         guard let peer else {
             throw PeekabooBridgeErrorEnvelope(
@@ -775,7 +782,11 @@ public final class PeekabooBridgeServer {
                 message: "Unsigned bridge clients are not allowed for this listener")
         }
 
-        if !self.allowlistedTeams.isEmpty {
+        let isTrustedLocalClient = peer.liveIdentity != nil && peer.userIdentifier == geteuid() &&
+            peer.teamIdentifier == nil && localSigningTrust?.acceptsClient(
+                bundleIdentifier: peer.bundleIdentifier,
+                certificateSHA256: peer.localCertificateSHA256) == true
+        if !self.allowlistedTeams.isEmpty, !isTrustedLocalClient {
             guard let team = peer.teamIdentifier, self.allowlistedTeams.contains(team) else {
                 let team = peer.teamIdentifier ?? "<unknown>"
                 throw PeekabooBridgeErrorEnvelope(

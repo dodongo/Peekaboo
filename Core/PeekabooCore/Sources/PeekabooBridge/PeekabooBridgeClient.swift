@@ -11,15 +11,18 @@ struct PeekabooBridgeClientHostAuthentication: @unchecked Sendable {
 
     let liveIdentity: LiveIdentityProvider
     let signingIdentity: SigningIdentityProvider
+    let localSigningTrust: @Sendable () -> PeekabooBridgeLocalSigningTrust?
 
     init(
         liveIdentity: @escaping LiveIdentityProvider = {
             try PeekabooBridgeSocketIO.livePeerIdentity(fd: $0)
         },
-        signingIdentity: @escaping SigningIdentityProvider)
+        signingIdentity: @escaping SigningIdentityProvider,
+        localSigningTrust: @escaping @Sendable () -> PeekabooBridgeLocalSigningTrust? = { .current })
     {
         self.liveIdentity = liveIdentity
         self.signingIdentity = signingIdentity
+        self.localSigningTrust = localSigningTrust
     }
 
     static let live = Self(
@@ -82,6 +85,7 @@ public actor PeekabooBridgeClient {
     private var operationSessionRenewal: PeekabooBridgeClientOperationSessionRenewal?
     private var receiptlessAuthenticatedHost: PeekabooBridgeConnectedHostIdentity?
     private var receiptlessAuthenticationEpoch: UInt64 = 0
+    private let usesDefaultHostTrust: Bool
 
     /// Creates a Bridge client.
     ///
@@ -108,6 +112,7 @@ public actor PeekabooBridgeClient {
             explicit: trustedHostTeamIDs,
             socketPath: socketPath)
         self.hostAuthentication = .live
+        self.usesDefaultHostTrust = trustedHostTeamIDs == nil
         let environmentDirectory = ProcessInfo.processInfo.environment["PEEKABOO_OPERATION_RECEIPT_DIRECTORY"]
             .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
         self.operationReceiptExportDirectory = operationReceiptExportDirectory ?? environmentDirectory
@@ -163,6 +168,7 @@ public actor PeekabooBridgeClient {
             explicit: trustedHostTeamIDs,
             socketPath: socketPath)
         self.hostAuthentication = hostAuthentication
+        self.usesDefaultHostTrust = trustedHostTeamIDs == nil
         let environmentDirectory = ProcessInfo.processInfo.environment["PEEKABOO_OPERATION_RECEIPT_DIRECTORY"]
             .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
         self.operationReceiptExportDirectory = operationReceiptExportDirectory ?? environmentDirectory
@@ -763,8 +769,42 @@ public actor PeekabooBridgeClient {
     /// their intentionally unauthenticated protocol-1.28 compatibility behavior.
     private func validateTrustedConnectedHost(_ connectedHost: PeekabooBridgeConnectedHostIdentity?) throws {
         guard let trustedHostTeamIDs = self.trustedHostTeamIDs else { return }
-        try PeekabooBridgeConnectedHostTrust.validate(
-            connectedHost, socketPath: self.socketPath, trustedTeamIDs: trustedHostTeamIDs)
+        guard let connectedHost,
+              let liveCodeSignatureHash = connectedHost.liveIdentity.codeSignatureHash,
+              !liveCodeSignatureHash.isEmpty,
+              Self.isTrustedConnectedHost(
+                  connectedHost,
+                  liveCodeSignatureHash: liveCodeSignatureHash,
+                  trustedHostTeamIDs: trustedHostTeamIDs,
+                  socketPath: self.socketPath,
+                  localSigningTrust: self.usesDefaultHostTrust ? self.hostAuthentication.localSigningTrust() : nil)
+        else {
+            throw PeekabooBridgeErrorEnvelope(
+                code: .unauthorizedClient,
+                message: "Bridge handshake did not come from a trusted connected host")
+        }
+    }
+
+    static func isTrustedConnectedHost(
+        _ connectedHost: PeekabooBridgeConnectedHostIdentity,
+        liveCodeSignatureHash: String,
+        trustedHostTeamIDs: Set<String>,
+        socketPath: String,
+        localSigningTrust: PeekabooBridgeLocalSigningTrust?) -> Bool
+    {
+        guard let signingIdentity = connectedHost.signingIdentity,
+              !liveCodeSignatureHash.isEmpty,
+              signingIdentity.codeSignatureHash == liveCodeSignatureHash
+        else { return false }
+        if let signingTeamIdentifier = signingIdentity.teamIdentifier {
+            return signingIdentity.localCertificateSHA256 == nil &&
+                trustedHostTeamIDs.contains(signingTeamIdentifier)
+        }
+        return connectedHost.liveIdentity.effectiveUserIdentifier == geteuid() &&
+            localSigningTrust?.acceptsHost(
+                socketPath: socketPath,
+                bundleIdentifier: signingIdentity.bundleIdentifier,
+                certificateSHA256: signingIdentity.localCertificateSHA256) == true
     }
 
     private func handshakeCandidate(
@@ -908,10 +948,12 @@ public actor PeekabooBridgeClient {
             guard let connectedHost,
                   let liveCodeSignatureHash = connectedHost.liveIdentity.codeSignatureHash,
                   !liveCodeSignatureHash.isEmpty,
-                  let signingIdentity = connectedHost.signingIdentity,
-                  signingIdentity.codeSignatureHash == liveCodeSignatureHash,
-                  let signingTeamIdentifier = signingIdentity.teamIdentifier,
-                  self.trustedHostTeamIDs?.contains(signingTeamIdentifier) == true,
+                  Self.isTrustedConnectedHost(
+                      connectedHost,
+                      liveCodeSignatureHash: liveCodeSignatureHash,
+                      trustedHostTeamIDs: self.trustedHostTeamIDs ?? [],
+                      socketPath: self.socketPath,
+                      localSigningTrust: self.usesDefaultHostTrust ? self.hostAuthentication.localSigningTrust() : nil),
                   connectedHost.liveIdentity.processIdentifier == advertisedListenerAttestation.host.processIdentifier,
                   connectedHost.liveIdentity.processStartIdentity ==
                   advertisedListenerAttestation.host.processStartIdentity,
@@ -947,10 +989,12 @@ public actor PeekabooBridgeClient {
             listenerLiveIdentity = connectedHost.liveIdentity
             sessionAttestation = advertisedSessionAttestation
             receiptlessAuthenticatedHost = nil
-            authenticatedHostIdentity = Self.authenticatedHostIdentity(
-                advertised: advertisedHostIdentity,
-                listener: advertisedListenerAttestation,
-                signingIdentity: signingIdentity)
+            authenticatedHostIdentity = connectedHost.signingIdentity.flatMap { signingIdentity in
+                Self.authenticatedHostIdentity(
+                    advertised: advertisedHostIdentity,
+                    listener: advertisedListenerAttestation,
+                    signingIdentity: signingIdentity)
+            }
         } else {
             listenerAttestation = nil
             listenerLiveIdentity = nil

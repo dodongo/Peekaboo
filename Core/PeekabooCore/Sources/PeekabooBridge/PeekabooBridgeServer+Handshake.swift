@@ -16,8 +16,8 @@ extension PeekabooBridgeServer {
         peer: PeekabooBridgePeer?,
         permissions: PermissionsStatus) async throws -> PeekabooBridgeResponse
     {
-        let resolvedBundle = peer?.bundleIdentifier ?? payload.client.bundleIdentifier
-        let resolvedTeam = peer?.teamIdentifier ?? payload.client.teamIdentifier
+        let resolvedBundle = peer?.bundleIdentifier
+        let resolvedTeam = peer?.teamIdentifier
         let operationReceiptAuthority = PeekabooBridgeRequestContext.operationReceiptAuthority
 
         guard self.supportedVersions.contains(payload.protocolVersion) else {
