@@ -110,7 +110,9 @@ PLIST
 EOF
 chmod 755 "$TEST_DIR/xcodebuild"
 
-mkdir -p "$TEST_DIR/Developer"
+# System Git is an xcrun shim, so it also needs a valid developer directory.
+# Xcode build and SDK queries remain mocked independently below.
+FIXTURE_DEVELOPER_DIR="$(/usr/bin/xcode-select -p)"
 cat > "$TEST_DIR/xcode-select" <<'EOF'
 #!/bin/bash
 [[ "$*" == -p ]] || exit 90
@@ -125,7 +127,7 @@ case "$*" in
 esac
 EOF
 chmod 755 "$TEST_DIR/xcode-select" "$TEST_DIR/xcrun"
-export FIXTURE_DEVELOPER_DIR="$(realpath "$TEST_DIR/Developer")"
+export FIXTURE_DEVELOPER_DIR="$(realpath "$FIXTURE_DEVELOPER_DIR")"
 export DEVELOPER_DIR="$FIXTURE_DEVELOPER_DIR"
 export PLAYGROUND_XCRUN_BIN="$TEST_DIR/xcrun"
 export PLAYGROUND_XCODE_SELECT_BIN="$TEST_DIR/xcode-select"

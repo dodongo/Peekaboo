@@ -765,7 +765,10 @@ struct PeekabooBridgeTests {
                 hostKind: .gui,
                 allowlistedTeams: [],
                 allowlistedBundles: [],
-                postEventAccessEvaluator: { true })
+                postEventAccessEvaluator: { true },
+                permissionStatusEvaluator: { _ in
+                    PermissionsStatus(screenRecording: true, accessibility: true)
+                })
         }
 
         let request = PeekabooBridgeRequest.captureFrontmost(
@@ -795,6 +798,9 @@ struct PeekabooBridgeTests {
                 allowlistedTeams: [],
                 allowlistedBundles: [],
                 postEventAccessEvaluator: { true },
+                permissionStatusEvaluator: { _ in
+                    PermissionsStatus(screenRecording: true, accessibility: true)
+                },
                 windowOwnerProcessIdentifierProvider: { _ in 42 },
                 windowBoundsProvider: { _ in CGRect(x: 10, y: 20, width: 300, height: 200) },
                 processStartIdentityProvider: { _ in 7 })
@@ -828,7 +834,8 @@ struct PeekabooBridgeTests {
                 services: stub,
                 hostKind: .gui,
                 allowlistedTeams: [],
-                allowlistedBundles: [])
+                allowlistedBundles: [],
+                permissionStatusEvaluator: { _ in Self.inputPermissions })
         }
         let request = PeekabooBridgeRequest.getFocusedElement(.init(targetProcessIdentifier: 4242))
         let requestData = try JSONEncoder.peekabooBridgeEncoder().encode(request)
@@ -1765,6 +1772,7 @@ extension PeekabooBridgeTests {
                 allowlistedBundles: [],
                 supportedVersions: Self.legacyProjectedVersion...Self.legacyProjectedVersion,
                 postEventAccessEvaluator: { true },
+                permissionStatusEvaluator: { _ in Self.inputPermissions },
                 windowOwnerProcessIdentifierProvider: { _ in 4242 },
                 windowBoundsProvider: { _ in CGRect(x: 0, y: 0, width: 800, height: 600) },
                 processStartIdentityProvider: { _ in 1 })
@@ -2003,7 +2011,8 @@ extension PeekabooBridgeTests {
                 services: services,
                 hostKind: .gui,
                 allowlistedTeams: [],
-                allowlistedBundles: [])
+                allowlistedBundles: [],
+                permissionStatusEvaluator: { _ in Self.inputPermissions })
         }
         let host = PeekabooBridgeHost(
             socketPath: socketPath,
@@ -2051,7 +2060,8 @@ extension PeekabooBridgeTests {
                 services: services,
                 hostKind: .gui,
                 allowlistedTeams: [],
-                allowlistedBundles: [])
+                allowlistedBundles: [],
+                permissionStatusEvaluator: { _ in Self.inputPermissions })
         }
         let host = PeekabooBridgeHost(
             socketPath: socketPath,
@@ -2244,6 +2254,7 @@ final class StubServices: PeekabooBridgeServiceProviding {
     var browserExecutionReceiptOverride: PeekabooBridgeBrowserConnectionReceipt?
     var browserCompletedCallCount: Int?
     var browserDispatchedCallCount: Int?
+    var browserProviderSessionEpoch: UUID?
     var preservesBrowserReceiptChannel = false
     private let ownedDesktopOperationLanes: Set<PeekabooBridgeOperation>
     var browserResponseContent: [PeekabooBridgeJSONValue] = [
@@ -2321,7 +2332,8 @@ final class StubServices: PeekabooBridgeServiceProviding {
                     webSocketDebuggerURL: self.browserConnectionReceipt.webSocketDebuggerURL,
                     devToolsBrowserID: self.browserConnectionReceipt.devToolsBrowserID,
                     browserVersion: self.browserConnectionReceipt.browserVersion,
-                    protocolVersion: self.browserConnectionReceipt.protocolVersion))
+                    protocolVersion: self.browserConnectionReceipt.protocolVersion),
+            providerSessionEpoch: self.browserProviderSessionEpoch)
     }
 
     func browserConnect(channel: String?, browserURL: String?) async throws -> PeekabooBridgeBrowserStatus {

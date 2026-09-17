@@ -279,17 +279,20 @@ public final actor PeekabooBridgeHost {
         let teamIdentifier: String?
         let codeSignatureHash: String?
         let sourceCommit: String?
+        let localCertificateSHA256: String?
 
         init(
             bundleIdentifier: String?,
             teamIdentifier: String?,
             codeSignatureHash: String?,
-            sourceCommit: String? = nil)
+            sourceCommit: String? = nil,
+            localCertificateSHA256: String? = nil)
         {
             self.bundleIdentifier = bundleIdentifier
             self.teamIdentifier = teamIdentifier
             self.codeSignatureHash = codeSignatureHash
             self.sourceCommit = sourceCommit
+            self.localCertificateSHA256 = localCertificateSHA256
         }
     }
 

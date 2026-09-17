@@ -83,12 +83,19 @@ extension PeekabooBridgeBrowserStatus {
 }
 
 public struct PeekabooBridgeBrowserSessionCaller: Sendable, Equatable {
+    enum Signer: Sendable, Equatable {
+        case releaseTeam(String)
+        case localCertificateSHA256(String)
+    }
+
     public let operationClientInstanceID: UUID
     public let process: PeekabooBridgeOperationProcessIdentity
     public let processIdentifierVersion: Int32
     public let effectiveUserIdentifier: uid_t
     public let bundleIdentifier: String
+    /// Empty for a certificate-pinned local signer; authorization uses the distinct signer provenance.
     public let teamIdentifier: String
+    let signer: Signer
 
     public init(
         operationClientInstanceID: UUID,
@@ -98,12 +105,33 @@ public struct PeekabooBridgeBrowserSessionCaller: Sendable, Equatable {
         bundleIdentifier: String,
         teamIdentifier: String)
     {
+        self.init(
+            operationClientInstanceID: operationClientInstanceID,
+            process: process,
+            processIdentifierVersion: processIdentifierVersion,
+            effectiveUserIdentifier: effectiveUserIdentifier,
+            bundleIdentifier: bundleIdentifier,
+            signer: .releaseTeam(teamIdentifier))
+    }
+
+    init(
+        operationClientInstanceID: UUID,
+        process: PeekabooBridgeOperationProcessIdentity,
+        processIdentifierVersion: Int32,
+        effectiveUserIdentifier: uid_t,
+        bundleIdentifier: String,
+        signer: Signer)
+    {
         self.operationClientInstanceID = operationClientInstanceID
         self.process = process
         self.processIdentifierVersion = processIdentifierVersion
         self.effectiveUserIdentifier = effectiveUserIdentifier
         self.bundleIdentifier = bundleIdentifier
-        self.teamIdentifier = teamIdentifier
+        self.signer = signer
+        self.teamIdentifier = switch signer {
+        case let .releaseTeam(teamIdentifier): teamIdentifier
+        case .localCertificateSHA256: ""
+        }
     }
 }
 
@@ -966,17 +994,26 @@ final class PeekabooBridgeBrowserHandoffGrantRegistry {
         return .process(processIdentity)
     }
 
-    private static func mayTransfer(
+    static func mayTransfer(
         from issuer: PeekabooBridgeBrowserSessionCaller,
-        to caller: PeekabooBridgeBrowserSessionCaller) -> Bool
+        to caller: PeekabooBridgeBrowserSessionCaller,
+        localSigningTrust: PeekabooBridgeLocalSigningTrust? = .current) -> Bool
     {
-        issuer.effectiveUserIdentifier == caller.effectiveUserIdentifier &&
-            issuer.effectiveUserIdentifier == geteuid() &&
-            issuer.bundleIdentifier == caller.bundleIdentifier &&
-            issuer.bundleIdentifier == PeekabooBridgeConstants.cliBundleIdentifier &&
-            issuer.teamIdentifier == caller.teamIdentifier &&
-            PeekabooBridgeConstants.trustedReleaseTeamIDs.contains(caller.teamIdentifier) &&
-            issuer.process.codeSignatureHash == caller.process.codeSignatureHash
+        guard issuer.effectiveUserIdentifier == caller.effectiveUserIdentifier,
+              issuer.effectiveUserIdentifier == geteuid(),
+              issuer.bundleIdentifier == caller.bundleIdentifier,
+              issuer.bundleIdentifier == PeekabooBridgeConstants.cliBundleIdentifier,
+              issuer.signer == caller.signer,
+              issuer.process.codeSignatureHash == caller.process.codeSignatureHash
+        else { return false }
+        switch caller.signer {
+        case let .releaseTeam(teamIdentifier):
+            return PeekabooBridgeConstants.trustedReleaseTeamIDs.contains(teamIdentifier)
+        case let .localCertificateSHA256(certificateSHA256):
+            return localSigningTrust?.acceptsClient(
+                bundleIdentifier: caller.bundleIdentifier,
+                certificateSHA256: certificateSHA256) == true
+        }
     }
 
     private static func addingClamped(_ value: Int64, _ delta: Int64) -> Int64 {
@@ -1337,7 +1374,10 @@ extension PeekabooBridgeBrowserHandoffGrantRegistry {
 }
 
 extension PeekabooBridgePeer {
-    func browserSessionCaller(clientInstanceID: UUID) throws -> PeekabooBridgeBrowserSessionCaller {
+    func browserSessionCaller(
+        clientInstanceID: UUID,
+        localSigningTrust: PeekabooBridgeLocalSigningTrust? = .current) throws -> PeekabooBridgeBrowserSessionCaller
+    {
         guard let liveIdentity = self.liveIdentity,
               self.processIdentifier > 0,
               self.processIdentifier == liveIdentity.processIdentifier,
@@ -1349,13 +1389,29 @@ extension PeekabooBridgePeer {
               !codeSignatureHash.isEmpty,
               codeSignatureHash == liveIdentity.codeSignatureHash,
               self.bundleIdentifier == PeekabooBridgeConstants.cliBundleIdentifier,
-              let bundleIdentifier = self.bundleIdentifier,
-              let teamIdentifier = self.teamIdentifier,
-              PeekabooBridgeConstants.trustedReleaseTeamIDs.contains(teamIdentifier)
+              let bundleIdentifier = self.bundleIdentifier
         else {
             throw PeekabooBridgeErrorEnvelope(
                 code: .unauthorizedClient,
-                message: "Browser handoff requires an authenticated release-signed Peekaboo CLI")
+                message: "Browser handoff requires an authenticated Peekaboo CLI")
+        }
+        let signer: PeekabooBridgeBrowserSessionCaller.Signer
+        if let teamIdentifier = self.teamIdentifier,
+           self.localCertificateSHA256 == nil,
+           PeekabooBridgeConstants.trustedReleaseTeamIDs.contains(teamIdentifier)
+        {
+            signer = .releaseTeam(teamIdentifier)
+        } else if let certificateSHA256 = self.localCertificateSHA256,
+                  self.teamIdentifier == nil,
+                  localSigningTrust?.acceptsClient(
+                      bundleIdentifier: bundleIdentifier,
+                      certificateSHA256: certificateSHA256) == true
+        {
+            signer = .localCertificateSHA256(certificateSHA256)
+        } else {
+            throw PeekabooBridgeErrorEnvelope(
+                code: .unauthorizedClient,
+                message: "Browser handoff requires an approved signing team or pinned local certificate")
         }
         return PeekabooBridgeBrowserSessionCaller(
             operationClientInstanceID: clientInstanceID,
@@ -1366,7 +1422,7 @@ extension PeekabooBridgePeer {
             processIdentifierVersion: liveIdentity.processIdentifierVersion,
             effectiveUserIdentifier: liveIdentity.effectiveUserIdentifier,
             bundleIdentifier: bundleIdentifier,
-            teamIdentifier: teamIdentifier)
+            signer: signer)
     }
 
     func isApprovedBrowserHandoffCaller() -> Bool {
