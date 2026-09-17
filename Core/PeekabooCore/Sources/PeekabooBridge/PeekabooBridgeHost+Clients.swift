@@ -241,7 +241,8 @@ extension PeekabooBridgeHost {
         signingIdentityProvider: (PeekabooBridgePeerAuditIdentity) -> PeerSigningIdentity? = {
             PeekabooBridgeHost.signingIdentity(auditIdentity: $0)
         },
-        allowUnsignedSocketClients: Bool = PeekabooBridgeHost.allowUnsignedSocketClients) -> PeekabooBridgePeer?
+        allowUnsignedSocketClients: Bool = PeekabooBridgeHost.allowUnsignedSocketClients,
+        localSigningTrust: PeekabooBridgeLocalSigningTrust? = .current) -> PeekabooBridgePeer?
     {
         guard let auditIdentity = liveIdentity.auditIdentity else { return nil }
         guard SystemIdentityResolver.processStartIdentity(auditIdentity.processIdentifier) ==
@@ -269,6 +270,19 @@ extension PeekabooBridgeHost {
         let pid = liveIdentity.processIdentifier
         let callerUID = liveIdentity.effectiveUserIdentifier
 
+        if callerUID == geteuid(),
+           let signingIdentity,
+           signingIdentity.teamIdentifier == nil,
+           localSigningTrust?.acceptsClient(
+               bundleIdentifier: signingIdentity.bundleIdentifier,
+               certificateSHA256: signingIdentity.localCertificateSHA256) == true
+        {
+            return self.peer(
+                liveIdentity: liveIdentity,
+                signingIdentity: signingIdentity,
+                teamIdentifier: nil)
+        }
+
         if allowedTeamIDs.isEmpty, callerUID == getuid() {
             return self.peer(
                 liveIdentity: liveIdentity,
@@ -277,7 +291,7 @@ extension PeekabooBridgeHost {
         }
 
         let teamID = signingIdentity?.teamIdentifier
-        if let teamID, allowedTeamIDs.contains(teamID) {
+        if let teamID, signingIdentity?.localCertificateSHA256 == nil, allowedTeamIDs.contains(teamID) {
             return self.peer(
                 liveIdentity: liveIdentity,
                 signingIdentity: signingIdentity,
@@ -315,7 +329,8 @@ extension PeekabooBridgeHost {
         PeekabooBridgePeer(
             liveIdentity: liveIdentity,
             bundleIdentifier: signingIdentity?.bundleIdentifier,
-            teamIdentifier: teamIdentifier)
+            teamIdentifier: teamIdentifier,
+            localCertificateSHA256: signingIdentity?.localCertificateSHA256)
     }
 
     nonisolated static func signingIdentity(
@@ -356,23 +371,16 @@ extension PeekabooBridgeHost {
     private nonisolated static func signingIdentity(
         information info: [String: Any]) -> PeerSigningIdentity
     {
-        let teamIdentifier: String? = if let teamID = info[kSecCodeInfoTeamIdentifier as String] as? String {
-            teamID
-        } else if let entitlements = info[kSecCodeInfoEntitlementsDict as String] as? [String: Any],
-                  let appIdentifier = entitlements["application-identifier"] as? String,
-                  let prefix = appIdentifier.split(separator: ".").first
-        {
-            String(prefix)
-        } else {
-            nil
-        }
+        let teamIdentifier = info[kSecCodeInfoTeamIdentifier as String] as? String
         return PeerSigningIdentity(
             bundleIdentifier: info[kSecCodeInfoIdentifier as String] as? String,
             teamIdentifier: teamIdentifier,
             codeSignatureHash: (info[kSecCodeInfoUnique as String] as? Data)?
                 .map { String(format: "%02x", $0) }.joined(),
             sourceCommit: (info[kSecCodeInfoPList as String] as? [String: Any])
-                .flatMap { SourceProvenance.exactCommit($0["PeekabooSourceCommit"] as? String) })
+                .flatMap { SourceProvenance.exactCommit($0["PeekabooSourceCommit"] as? String) },
+            localCertificateSHA256:
+            info[PeekabooBridgeCodeSignatureIdentity.validatedLocalCertificateSHA256Key] as? String)
     }
 
     private nonisolated static func signingInformation(pid: pid_t) -> [String: Any]? {

@@ -103,6 +103,9 @@ python3 "$PROJECT_ROOT/scripts/setup-swift-workspace.py" run -- xcodebuild \
     -configuration "$CONFIGURATION" \
     -derivedDataPath "$DERIVED_DATA_PATH" \
     -destination "$DESTINATION" \
+    -disableAutomaticPackageResolution \
+    -onlyUsePackageVersionsFromResolvedFile \
+    -skipPackageUpdates \
     build \
     ONLY_ACTIVE_ARCH=YES \
     PEEKABOO_SOURCE_COMMIT="$SOURCE_COMMIT" \
