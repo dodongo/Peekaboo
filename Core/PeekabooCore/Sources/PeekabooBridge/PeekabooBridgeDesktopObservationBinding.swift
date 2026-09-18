@@ -620,7 +620,9 @@ enum PeekabooBridgeDesktopObservationBinding {
             if let windowID = context.windowID, windowID != targetWindow.windowID {
                 return "window-context window ID"
             }
-            if let title = context.windowTitle, title != targetWindow.title {
+            // Accessibility titles can legitimately differ from the WindowServer title (Chrome appends the browser
+            // and profile name), so the title is only identity evidence when no window ID pins the context.
+            if context.windowID == nil, let title = context.windowTitle, title != targetWindow.title {
                 return "window-context window title"
             }
             if let bounds = context.windowBounds, bounds != targetWindow.bounds {

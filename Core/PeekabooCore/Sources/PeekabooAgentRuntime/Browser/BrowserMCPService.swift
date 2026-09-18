@@ -1202,6 +1202,9 @@ public final class BrowserMCPService: BrowserMCPClientProviding, BrowserMCPActio
         "--",
         "--page-id-routing",
         "--experimentalStructuredContent",
+        // The provider process runs with TMPDIR pinned to a private upload workspace, so its default
+        // temp-directory-only file policy would reject every caller-chosen output path.
+        "--allow-unrestricted-paths",
     ]
 
     static func chromeDevToolsConfig(browserURL: String, headless _: Bool) -> MCPServerConfig {

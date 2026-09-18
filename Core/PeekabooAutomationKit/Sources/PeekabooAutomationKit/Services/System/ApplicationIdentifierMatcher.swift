@@ -40,7 +40,6 @@ public enum ApplicationIdentifierMatcher {
 
     public enum ResolutionError: Error, Sendable, Equatable {
         case candidateSetTooLarge(Int)
-        case candidateFieldTooLarge
     }
 
     public struct Candidate: Sendable, Equatable {
@@ -107,14 +106,6 @@ public enum ApplicationIdentifierMatcher {
     {
         guard candidates.count <= self.maximumProofCandidateCount else {
             throw ResolutionError.candidateSetTooLarge(candidates.count)
-        }
-        let maximumFieldByteCount = 4096
-        guard candidates.allSatisfy({ candidate in
-            [candidate.bundleIdentifier, candidate.bundlePath, candidate.executablePath, candidate.name]
-                .compactMap(\.self)
-                .allSatisfy { $0.utf8.count <= maximumFieldByteCount }
-        }) else {
-            throw ResolutionError.candidateFieldTooLarge
         }
         guard let selection = self.selection(for: identifier, in: candidates) else { return nil }
         let encoder = JSONEncoder()
@@ -235,14 +226,23 @@ public enum ApplicationIdentifierMatcher {
         let allowsFuzzyMatching: Bool
         let isRegularApplication: Bool
 
+        /// Bounds each digested field so a process with a huge command line (for example `node --eval <script>`,
+        /// whose localized name is its full argument list) cannot make application resolution fail.
+        static let maximumFieldByteCount = 4096
+
         init(_ candidate: Candidate) {
             self.processIdentifier = candidate.processIdentifier
-            self.bundleIdentifier = candidate.bundleIdentifier
-            self.name = candidate.name
-            self.bundlePath = candidate.bundlePath
-            self.executablePath = candidate.executablePath
+            self.bundleIdentifier = candidate.bundleIdentifier.map(Self.bounded)
+            self.name = Self.bounded(candidate.name)
+            self.bundlePath = candidate.bundlePath.map(Self.bounded)
+            self.executablePath = candidate.executablePath.map(Self.bounded)
             self.allowsFuzzyMatching = candidate.allowsFuzzyMatching
             self.isRegularApplication = candidate.isRegularApplication
+        }
+
+        private static func bounded(_ value: String) -> String {
+            guard value.utf8.count > self.maximumFieldByteCount else { return value }
+            return String(decoding: value.utf8.prefix(self.maximumFieldByteCount), as: UTF8.self)
         }
     }
 
