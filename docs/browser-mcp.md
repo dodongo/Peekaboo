@@ -102,6 +102,7 @@ chrome-devtools-mcp \
   --wsEndpoint=ws://127.0.0.1:<port>/devtools/browser/<id> \
   --page-id-routing \
   --experimentalStructuredContent \
+  --allow-unrestricted-paths \
   --no-usage-statistics \
   --no-performance-crux
 ```

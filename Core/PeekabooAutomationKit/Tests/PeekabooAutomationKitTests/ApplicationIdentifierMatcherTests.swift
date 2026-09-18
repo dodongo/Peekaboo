@@ -159,6 +159,23 @@ struct ApplicationIdentifierMatcherTests {
     }
 
     @Test
+    func `Resolution tolerates a candidate whose name is a huge command line`() throws {
+        let candidates = [
+            ApplicationIdentifierMatcher.Candidate(
+                processIdentifier: 1,
+                bundleIdentifier: nil,
+                name: "node --eval " + String(repeating: "x", count: 6000)),
+            ApplicationIdentifierMatcher.Candidate(
+                processIdentifier: 2,
+                bundleIdentifier: "org.example.fixture",
+                name: "Fixture"),
+        ]
+        let resolution = try #require(try ApplicationIdentifierMatcher.resolution(for: "Fixture", in: candidates))
+        #expect(resolution.index == 1)
+        #expect(resolution.candidateCount == 2)
+    }
+
+    @Test
     func `Legacy application evidence decodes without selector proof`() throws {
         let serviceJSON = Data(
             #"{"processIdentifier":42,"name":"Fixture","isActive":false,"isHidden":false,"windowCount":0}"#.utf8)

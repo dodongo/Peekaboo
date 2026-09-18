@@ -58,7 +58,7 @@ struct BrowserMCPConfigTests {
     }
 
     private func expectStructuredCapabilityArguments(_ arguments: [String]) {
-        #expect(Array(arguments.prefix(10)) == [
+        #expect(Array(arguments.prefix(11)) == [
             "-y",
             "--package=chrome-devtools-mcp@1.9.0",
             "--",
@@ -69,8 +69,10 @@ struct BrowserMCPConfigTests {
             "--",
             "--page-id-routing",
             "--experimentalStructuredContent",
+            "--allow-unrestricted-paths",
         ])
         #expect(arguments.count { $0 == "--page-id-routing" } == 1)
         #expect(arguments.count { $0 == "--experimentalStructuredContent" } == 1)
+        #expect(arguments.count { $0 == "--allow-unrestricted-paths" } == 1)
     }
 }
