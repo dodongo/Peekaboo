@@ -736,7 +736,7 @@ private final class AmbiguousFocusClipboardService: ClipboardServiceProtocol {
     func clear() {}
     func save(slot _: String) throws {}
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         throw ClipboardServiceError.slotNotFound(slot)
     }
 }

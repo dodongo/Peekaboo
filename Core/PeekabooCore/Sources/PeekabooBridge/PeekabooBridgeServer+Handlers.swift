@@ -85,7 +85,7 @@ extension PeekabooBridgeServer {
              .typeActions,
              .targetedTypeActions, .exactWindowTargetedTypeActions, .exactWindowPixelFocusType,
              .foregroundModifierClick,
-             .setValue, .performAction, .scroll, .targetedScroll, .hotkey, .targetedHotkey,
+             .setValue, .selectText, .performAction, .scroll, .targetedScroll, .hotkey, .targetedHotkey,
              .exactWindowTargetedHotkey, .targetedClick,
              .exactWindowTargetedClick, .swipe, .drag, .moveMouse, .waitForElement:
             return try await self.handleAutomationRequest(request)
@@ -287,7 +287,7 @@ extension PeekabooBridgeServer {
              .foregroundModifierClick, .targetedHotkey,
              .exactWindowTargetedHotkey, .targetedClick:
             return try await self.handleTargetedAutomationRequest(request)
-        case .setValue, .performAction:
+        case .setValue, .selectText, .performAction:
             return try await self.handleElementActionRequest(request)
         case let .scroll(payload):
             return try await self.handleScroll(payload.request)
@@ -450,6 +450,18 @@ extension PeekabooBridgeServer {
                         value: payload.value,
                         snapshotId: payload.snapshotId)
                 },
+                fallbackTarget: nil,
+                response: PeekabooBridgeResponse.elementActionResult)
+        case let .selectText(payload):
+            return try await self.handleAutomationAction(
+                withOutcome: { service in
+                    guard let selectionService = service as? any TextSelectionAutomationServiceProtocol else {
+                        throw PeekabooError.serviceUnavailable("Bridge host does not support text selection")
+                    }
+                    return try await selectionService.selectTextWithOutcome(
+                        target: payload.target, selection: payload.selection, snapshotId: payload.snapshotId)
+                },
+                legacy: { throw PeekabooError.serviceUnavailable("Text selection requires receipted outcomes") },
                 fallbackTarget: nil,
                 response: PeekabooBridgeResponse.elementActionResult)
         case let .performAction(payload):

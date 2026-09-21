@@ -314,6 +314,7 @@ extension PeekabooBridgeServer {
             offered: context.claim.negotiatedCapabilities.screenCaptureKitOwnershipDiagnostics)
             .projectingSetValueVerification(
                 offered: context.claim.negotiatedCapabilities.setValueVerification, request: context.request)
+            .projectingBrowserFeatures(for: context.claim.negotiatedCapabilities.protocolVersion)
         let receiptPayload = try PeekabooBridgeOperationReceiptPayload(
             requestID: context.requestPayload.requestID,
             sessionID: context.requestPayload.sessionID,

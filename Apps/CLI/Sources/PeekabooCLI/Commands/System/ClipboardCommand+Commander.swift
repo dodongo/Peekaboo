@@ -276,19 +276,21 @@ extension ClipboardCommand {
                 )
                 let payload = ClipboardCommandResult(
                     action: "restore",
-                    uti: actionResult.payload.utiIdentifier,
-                    size: actionResult.payload.data.count,
+                    uti: actionResult.payload?.utiIdentifier,
+                    size: actionResult.payload?.data.count,
                     filePath: nil,
                     slot: slotName,
                     text: nil,
-                    textPreview: actionResult.payload.textPreview,
+                    textPreview: actionResult.payload?.textPreview,
                     dataBase64: nil,
                     verification: nil
                 )
                 self.output(payload, outcome: outcome) {
                     print(
                         "♻️  Restored slot \"\(slotName)\" " +
-                            "(\(actionResult.payload.utiIdentifier), \(actionResult.payload.data.count) bytes)"
+                            (actionResult.payload
+                                .map { "(\($0.utiIdentifier), \($0.data.count) bytes)" } ?? "(empty clipboard)"
+                            )
                     )
                 }
             } catch {

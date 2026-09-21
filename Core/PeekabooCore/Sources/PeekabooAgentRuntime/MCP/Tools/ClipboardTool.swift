@@ -203,12 +203,18 @@ public struct ClipboardTool: MCPTool {
             actionResult.outcome,
             operation: "Clipboard restore")
         do {
+            guard let payload = actionResult.payload else {
+                return try ToolResponse.text(
+                    "Restored empty clipboard from slot \"\(slot)\".",
+                    meta: MCPToolResponseMetadataProjector.metadata(
+                        merging: ["slot": .string(slot), "empty": .bool(true)], outcome: outcome))
+            }
             return try ToolResponse.text(
                 "Restored clipboard from slot \"\(slot)\" " +
-                    "(\(actionResult.payload.utiIdentifier), \(actionResult.payload.data.count) bytes).",
+                    "(\(payload.utiIdentifier), \(payload.data.count) bytes).",
                 meta: MCPToolResponseMetadataProjector.metadata(
                     merging: self.metaFields(
-                        result: actionResult.payload,
+                        result: payload,
                         filePath: nil,
                         extra: ["slot": .string(slot)]),
                     outcome: outcome))

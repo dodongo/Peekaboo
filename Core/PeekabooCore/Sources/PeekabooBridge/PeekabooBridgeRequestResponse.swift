@@ -36,6 +36,7 @@ public enum PeekabooBridgeRequest: Codable, Sendable {
     case exactWindowPixelFocusType(PeekabooBridgeExactWindowPixelFocusTypeRequest)
     case foregroundModifierClick(PeekabooBridgeForegroundModifierClickRequest)
     case setValue(PeekabooBridgeSetValueRequest)
+    case selectText(PeekabooBridgeSelectTextRequest)
     case performAction(PeekabooBridgePerformActionRequest)
     case scroll(PeekabooBridgeScrollRequest)
     case targetedScroll(PeekabooBridgeScrollRequest)
@@ -162,6 +163,7 @@ extension PeekabooBridgeRequest {
         case .exactWindowPixelFocusType: .exactWindowPixelFocusType
         case .foregroundModifierClick: .foregroundModifierClick
         case .setValue: .setValue
+        case .selectText: .selectText
         case .performAction: .performAction
         case .scroll: .scroll
         case .targetedScroll: .targetedScroll

@@ -908,7 +908,7 @@ final class StubClipboardService: ClipboardServiceProtocol {
         self.afterSave?()
     }
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         self.beforeMutation?()
         self.restoreCallCount += 1
         if let restoreError {

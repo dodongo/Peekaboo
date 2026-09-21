@@ -163,7 +163,7 @@ final class ClipboardWriteRequestTests: XCTestCase {
         _ = try clipboard.set(ClipboardPayloadBuilder.textRequest(text: "temporary"))
         let restore = try clipboard.restoreResult(slot: "fixture")
         XCTAssertEqual(restore.outcome, .confirmedChange(delivery: delivery))
-        XCTAssertEqual(String(data: restore.payload.data, encoding: .utf8), "stored")
+        XCTAssertEqual(try String(data: XCTUnwrap(restore.payload).data, encoding: .utf8), "stored")
 
         let clear = try clipboard.clearResult()
         XCTAssertEqual(clear.outcome, .confirmedChange(delivery: delivery))

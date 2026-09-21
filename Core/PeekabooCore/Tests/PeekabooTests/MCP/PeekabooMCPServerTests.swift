@@ -115,6 +115,18 @@ struct PeekabooMCPServerTests {
     }
 
     @Test
+    func structuredContentSurvivesWireEncoding() throws {
+        let payload: Value = .object(["ui_elements": .array([.object(["id": .string("B1")])])])
+        let response = ToolResponse(
+            content: [.text("One element")],
+            structuredContent: payload)
+        let result = PeekabooMCPServer.callToolResult(from: response, toolName: "inspect_ui")
+        #expect(result.structuredContent == payload)
+        let decoded = try JSONDecoder().decode(CallTool.Result.self, from: JSONEncoder().encode(result))
+        #expect(decoded.structuredContent == payload)
+    }
+
+    @Test
     func `server preserves tool response metadata on the MCP wire result`() throws {
         let response = ToolResponse.text(
             "Captured image",

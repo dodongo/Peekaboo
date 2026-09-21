@@ -10,6 +10,37 @@ import Testing
 @Suite(.serialized)
 struct PeekabooBridgeTypedResultReceiptBindingTests {
     @Test
+    func signedTextSelectionResultsValidateLiveAndOffline() async throws {
+        let fixture = try await Self.makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let modes: [TextSelectionRequest.SelectionType] = [.text, .cursorBefore, .cursorAfter]
+        for (index, mode) in modes.enumerated() {
+            let selection = TextSelectionRequest(text: "target", selectionType: mode)
+            let request = PeekabooBridgeRequest.projectedAction(.init(request: .selectText(.init(
+                target: "T1", selection: selection, snapshotId: SnapshotReferenceFixtures.first.rawValue))))
+            let response = PeekabooBridgeResponse.projectedAction(.init(
+                response: .elementActionResult(.init(
+                    target: "T1",
+                    actionName: "AXSelectedTextRange",
+                    anchorPoint: nil,
+                    newValue: selection.selectedText)),
+                outcome: DesktopActionOutcome.confirmedChange(
+                    route: .bridge,
+                    delivery: .init(mechanism: .accessibilityValue, mode: .background),
+                    unitCount: .one).projection))
+            let bundle = try await Self.signedBundle(
+                fixture: fixture,
+                sequence: UInt64(index),
+                request: request,
+                response: response,
+                target: .window(fixture.windowIdentity))
+            try PeekabooBridgeOperationReceiptSemantics.validateReceiptCarriage(
+                bundle.receipt.payload, request: request, response: response)
+            try bundle.validateIntegrity()
+        }
+    }
+
+    @Test
     func `signed keyed read responses are bound live and offline`() async throws {
         let fixture = try await Self.makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }

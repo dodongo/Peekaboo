@@ -25,6 +25,8 @@ protocol AutomationElementRepresenting: Sendable {
     var isFocusedSettable: Bool { get }
     var isSelectedSettable: Bool { get }
     var selectedValue: Bool? { get }
+    var selectedTextRange: NSRange? { get }
+    var isSelectedTextRangeSettable: Bool { get }
     var isEnabled: Bool { get }
     var isFocused: Bool { get }
     var focusedState: Bool? { get }
@@ -49,6 +51,7 @@ protocol AutomationElementRepresenting: Sendable {
     func setAutomationValue(_ value: UIElementValue) throws
     func setAutomationFocused(_ focused: Bool) throws
     func setAutomationSelected(_ selected: Bool) throws
+    func setAutomationSelectedTextRange(_ range: NSRange) throws
     func stringAttribute(_ name: String) -> String?
     func intAttribute(_ name: String) -> Int?
     func doubleAttribute(_ name: String) -> Double?
@@ -67,6 +70,13 @@ extension AutomationElementRepresenting {
 }
 
 extension AutomationElementRepresenting {
+    var selectedTextRange: NSRange? { nil }
+    var isSelectedTextRangeSettable: Bool { false }
+
+    func setAutomationSelectedTextRange(_: NSRange) throws {
+        throw AccessibilitySystemError(.attributeUnsupported)
+    }
+
     var underlyingAXElement: AXUIElement? {
         nil
     }
@@ -312,6 +322,43 @@ struct AutomationElement: AutomationElementRepresenting {
         guard error == .success else {
             throw AccessibilitySystemError(error)
         }
+    }
+
+    @MainActor
+    var selectedTextRange: NSRange? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            self.element.underlyingElement,
+            kAXSelectedTextRangeAttribute as CFString,
+            &raw) == .success,
+            let raw, CFGetTypeID(raw) == AXValueGetTypeID()
+        else { return nil }
+        let value = unsafeDowncast(raw, to: AXValue.self)
+        var range = CFRange()
+        guard AXValueGetValue(value, .cfRange, &range), range.location >= 0, range.length >= 0 else { return nil }
+        return NSRange(location: range.location, length: range.length)
+    }
+
+    @MainActor
+    var isSelectedTextRangeSettable: Bool {
+        var settable = DarwinBoolean(false)
+        return AXUIElementIsAttributeSettable(
+            self.element.underlyingElement,
+            kAXSelectedTextRangeAttribute as CFString,
+            &settable) == .success && settable.boolValue
+    }
+
+    @MainActor
+    func setAutomationSelectedTextRange(_ requested: NSRange) throws {
+        var range = CFRange(location: requested.location, length: requested.length)
+        guard let value = AXValueCreate(.cfRange, &range) else {
+            throw AccessibilitySystemError(.illegalArgument)
+        }
+        let error = AXUIElementSetAttributeValue(
+            self.element.underlyingElement,
+            kAXSelectedTextRangeAttribute as CFString,
+            value)
+        guard error == .success else { throw AccessibilitySystemError(error) }
     }
 
     @MainActor

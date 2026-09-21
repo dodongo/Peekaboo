@@ -316,7 +316,7 @@ private final class DesktopContextClipboardStub: ClipboardServiceProtocol {
         fatalError("Unexpected clipboard save")
     }
 
-    func restore(slot _: String) throws -> ClipboardReadResult {
+    func restore(slot _: String) throws -> ClipboardReadResult? {
         fatalError("Unexpected clipboard restore")
     }
 }

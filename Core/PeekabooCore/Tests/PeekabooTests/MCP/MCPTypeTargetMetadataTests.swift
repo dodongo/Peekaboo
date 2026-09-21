@@ -252,7 +252,7 @@ private final class TypeMetadataUnusedServices: ClipboardServiceProtocol, Browse
         throw self.unexpected()
     }
 
-    func restore(slot _: String) throws -> ClipboardReadResult {
+    func restore(slot _: String) throws -> ClipboardReadResult? {
         throw self.unexpected()
     }
 

@@ -4,6 +4,12 @@ import PeekabooFoundation
 import TachikomaMCP
 
 struct InspectUIRequest {
+    enum OutputFormat: String {
+        case text
+        case structured
+    }
+
+    let outputFormat: OutputFormat
     let appTarget: String?
     let windowIDValue: Value?
     let snapshotId: String?
@@ -11,6 +17,14 @@ struct InspectUIRequest {
     let traversalBudget: AXTraversalBudget
 
     init(arguments: ToolArguments) throws {
+        if let format = arguments.getValue(for: "output_format") {
+            guard case let .string(raw) = format, let parsed = OutputFormat(rawValue: raw) else {
+                throw PeekabooError.invalidInput("output_format must be text or structured")
+            }
+            self.outputFormat = parsed
+        } else {
+            self.outputFormat = .text
+        }
         self.appTarget = arguments.getString("app_target")
         self.windowIDValue = arguments.getValue(for: "window_id")
         self.snapshotId = arguments.getString("snapshot")

@@ -100,7 +100,7 @@ extension PeekabooBridgeRequest {
 
     var requiresProcessGenerationBoundElementMutations: Bool {
         switch self.unwrappedOperationRequest.operation {
-        case .setValue, .performAction:
+        case .setValue, .selectText, .performAction:
             true
         default:
             false
@@ -127,7 +127,7 @@ extension PeekabooBridgeRequest {
         case let .browserStatus(payload):
             payload.sessionID != nil || payload.requestsHandoff || payload.browserURL != nil
         case let .browserExecute(payload):
-            payload.sessionID != nil || payload.expectedProviderSessionEpoch != nil || payload.elementPreflight != nil
+            payload.sessionID != nil || payload.elementPreflight != nil
         default:
             false
         }

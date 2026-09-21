@@ -230,6 +230,14 @@ extension PeekabooBridgeOperationResultSemantics {
                 completion: .dispatchedUnverified(valueBackground),
                 targetPolicy: .handlerRequired,
                 responseFamilies: [.elementActionResult])
+        case .selectText:
+            descriptor(
+                ownership: .service,
+                typedResponse: .selectText,
+                requiredPermissions: [.accessibility],
+                completion: .dispatchedUnverified(valueBackground),
+                targetPolicy: .handlerRequired,
+                responseFamilies: [.elementActionResult])
         case .performAction:
             descriptor(
                 ownership: .service,

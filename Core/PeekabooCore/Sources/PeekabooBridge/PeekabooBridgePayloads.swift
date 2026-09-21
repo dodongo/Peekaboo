@@ -821,3 +821,15 @@ public struct PeekabooBridgeCleanSnapshotRequest: Codable, Sendable {
 public struct PeekabooBridgeCleanSnapshotsOlderRequest: Codable, Sendable {
     public let days: Int
 }
+
+public struct PeekabooBridgeSelectTextRequest: Codable, Sendable {
+    public let target: String
+    public let selection: TextSelectionRequest
+    public let snapshotId: String?
+
+    public init(target: String, selection: TextSelectionRequest, snapshotId: String?) {
+        self.target = target
+        self.selection = selection
+        self.snapshotId = snapshotId
+    }
+}
