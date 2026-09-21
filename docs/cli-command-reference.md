@@ -36,6 +36,7 @@ This source-tree reference covers all 33 root commands in the upcoming v4 regist
 | [`press`](commands/press.md) | Press xdotool-style chords or chord sequences. |
 | [`scroll`](commands/scroll.md) | Scroll by direction, optionally on an element. |
 | [`set-value`](commands/set-value.md) | Set an accessibility element value directly. |
+| [`select-text`](commands/select-text.md) | Select a substring or place the cursor before/after it. |
 | [`type`](commands/type.md) | Type text; standalone keys and chords belong to `press`. |
 
 ## System commands

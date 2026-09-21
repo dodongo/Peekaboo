@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { providerBootstrapSource } from './browser-provider-source.mjs';
 
 const rootPackageURL = new URL("../package.json", import.meta.url);
 const dependencyPackageURL = new URL(
@@ -67,11 +68,7 @@ assert.equal(dependencyPackage.version, declaredVersion, "installed Chrome DevTo
 assert.equal(swiftVersion, declaredVersion, "Swift browser routing contract must match the dependency pin");
 
 // Exercise the exact embedded runtime loader, stopping before the stdio server entrypoint.
-const bootstrapSwift = readFileSync(new URL(
-  "../Core/PeekabooCore/Sources/PeekabooAgentRuntime/Browser/BrowserMCPProviderBootstrap.swift", import.meta.url,
-), "utf8");
-const bootstrap = bootstrapSwift.match(/static let source = #"""\n([\s\S]*?)\n    """#/)[1]
-  .replace(/^    /gm, "");
+const bootstrap = providerBootstrapSource();
 // The owner verifies Chrome on the persistent provider socket, before page work.
 const connectionBootstrap = bootstrap.split("process.argv =")[0];
 assert.ok(connectionBootstrap.includes("peekaboo_browser_connect"),
@@ -480,8 +477,11 @@ const auditedNames = [
   ...expectedBlockedSelectedPageNames,
 ].sort();
 
-assert.equal(pageScopedTools.length, 32, "the pinned dependency page-scoped contract changed");
-assert.equal(registeredNames.length, 29, "the pinned provider's default registered catalog changed");
+assert.equal(pageScopedTools.filter(tool => tool.name !== 'peekaboo_locator_action').length, 32,
+  "the pinned dependency page-scoped contract changed");
+assert.equal(registeredNames.filter(name => name !== 'peekaboo_locator_action').length, 29,
+  "the pinned provider's default registered catalog changed");
+assert.ok(registeredNames.includes('peekaboo_locator_action'), 'locator tool must be registered through the provider');
 assert.deepEqual(
   [
     ...expectedAlwaysForegroundNames,
@@ -544,7 +544,7 @@ assert.deepEqual(
 assert.deepEqual(
   expectedSnapshotResponseNames,
   [
-    "click", "click_at", "drag", "execute_3p_developer_tool", "fill", "fill_form", "hover", "press_key",
+    "click", "click_at", "drag", "execute_3p_developer_tool", "fill", "fill_form", "hover", "peekaboo_locator_action", "press_key",
     "take_snapshot", "upload_file", "wait_for",
   ],
   "re-audit every provider tool that can emit a snapshot",

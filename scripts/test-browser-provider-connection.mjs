@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { devtoolsFixture } from '../tests/fixtures/devtools-websocket.mjs';
+import { providerBootstrapSource } from './browser-provider-source.mjs';
 
-const swift = readFileSync(new URL('../Core/PeekabooCore/Sources/PeekabooAgentRuntime/Browser/BrowserMCPProviderBootstrap.swift', import.meta.url), 'utf8');
-const bootstrap = swift.match(/static let source = #"""\n([\s\S]*?)\n    """#/)[1].replace(/^    /gm, '');
+const bootstrap = providerBootstrapSource();
 process.env.PATH = fileURLToPath(new URL('../node_modules/.bin', import.meta.url)) + delimiter + process.env.PATH;
 await import('data:text/javascript,' + encodeURIComponent(bootstrap.split('process.argv =')[0]));
 const { McpServer } = await import('../node_modules/chrome-devtools-mcp/build/src/index.js');
