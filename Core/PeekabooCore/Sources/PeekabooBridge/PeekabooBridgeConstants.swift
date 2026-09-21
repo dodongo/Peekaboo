@@ -73,6 +73,10 @@ public enum PeekabooBridgeConstants {
     /// Current protocol version supported by this build.
     public static let protocolVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 39)
 
+    /// First protocol exposing browser provider feature advertisements in status responses.
+    /// Older peers omit these fields to preserve signed-response digest compatibility.
+    public static let browserProviderFeaturesVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 39)
+
     /// First protocol with receipt-bound substring selection and cursor placement.
     public static let textSelectionVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 39)
 

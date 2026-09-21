@@ -31,6 +31,7 @@ enum BrowserMCPUserActivationPolicy {
         "list_pages",
         "navigate_page",
         "new_page",
+        "peekaboo_locator_action",
         "press_key",
         "resize_page",
         "select_page",

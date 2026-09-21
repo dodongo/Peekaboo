@@ -12,15 +12,24 @@ protocol BrowserMCPManaging: AnyObject {
     func hasServer(name: String) -> Bool
     func isServerConnected(name: String) async -> Bool
     func serverToolCount(name: String) async -> Int
+    func serverProviderFeatures(name: String) async -> [String]?
     func addServer(name: String, config: MCPServerConfig) async throws
     func removeServer(name: String) async
     func executeTool(serverName: String, toolName: String, arguments: [String: Any]) async throws -> ToolResponse
     func verifyBrowserConnection(serverName: String, endpoint: String) async throws -> BrowserMCPDevToolsVersion
 }
 
+extension BrowserMCPManaging {
+    func serverProviderFeatures(name _: String) async -> [String]? { nil }
+}
+
 extension TachikomaMCPClientManager: BrowserMCPManaging {
     func hasServer(name: String) -> Bool {
         self.getServerConfig(name: name) != nil
+    }
+
+    func serverProviderFeatures(name: String) async -> [String]? {
+        await BrowserMCPProviderFeatures.detect(in: self.getServerTools(name: name))
     }
 
     func serverToolCount(name: String) async -> Int {
@@ -234,6 +243,7 @@ final class BrowserMCPSessionManager: @unchecked Sendable {
                 status: BrowserMCPStatus(
                     isConnected: true,
                     toolCount: self.manager.serverToolCount(name: self.serverName),
+                    providerFeatures: self.manager.serverProviderFeatures(name: self.serverName),
                     detectedBrowsers: browsers,
                     connectionReceipt: receipt,
                     providerSessionEpoch: providerSessionEpoch),
@@ -1111,29 +1121,39 @@ final class BrowserMCPSessionManager: @unchecked Sendable {
                 throw BrowserMCPCallFailure.mayHaveDispatched(error)
             }
         }
-        guard let sourcePath = call.arguments["filePath"] as? String, !sourcePath.isEmpty,
-              call.arguments["filePaths"] == nil
-        else {
+        let sourcePaths: [String]
+        if let path = call.arguments["filePath"] as? String, call.arguments["filePaths"] == nil {
+            sourcePaths = [path]
+        } else if let paths = call.arguments["filePaths"] as? [String], call.arguments["filePath"] == nil {
+            sourcePaths = paths
+        } else {
             throw BrowserMCPCallFailure.preDispatch(
-                BrowserMCPUploadStagingError.invalidPath(
-                    "upload_file requires a single non-empty filePath string; filePaths is not supported"))
+                BrowserMCPUploadStagingError.invalidPath("upload_file requires filePath or filePaths, exclusively"))
+        }
+        guard (1...16).contains(sourcePaths.count), sourcePaths.allSatisfy({ !$0.isEmpty }) else {
+            throw BrowserMCPCallFailure.preDispatch(
+                BrowserMCPUploadStagingError.invalidPath("upload_file requires 1...16 non-empty file paths"))
         }
 
         guard let uploadWorkspace = self.uploadWorkspace else {
             throw BrowserMCPCallFailure.preDispatch(
                 BrowserMCPConnectionError.connectionLost("the browser upload workspace is unavailable"))
         }
-        let stagedUpload: BrowserMCPStagedUpload
+        var stagedUploads: [BrowserMCPStagedUpload] = []
         do {
-            stagedUpload = try await self.uploadStager.stage(path: sourcePath, in: uploadWorkspace)
+            for sourcePath in sourcePaths {
+                try Task.checkCancellation()
+                try await stagedUploads.append(self.uploadStager.stage(path: sourcePath, in: uploadWorkspace))
+            }
             try Task.checkCancellation()
         } catch {
+            stagedUploads.forEach { $0.cleanup() }
             throw BrowserMCPCallFailure.preDispatch(error)
         }
         var stagedArguments = call.arguments
-        // Preserve Peekaboo's single-file API while only exposing the checked copy to the newer provider.
+        // Stage the complete selection before dispatch; never replace it with successive single-file uploads.
         stagedArguments.removeValue(forKey: "filePath")
-        stagedArguments["filePaths"] = [stagedUpload.filePath]
+        stagedArguments["filePaths"] = stagedUploads.map(\.filePath)
         let uploadID = UUID()
         self.activeUploadID = uploadID
         do {
@@ -1151,20 +1171,28 @@ final class BrowserMCPSessionManager: @unchecked Sendable {
             if self.activeUploadID == uploadID {
                 self.activeUploadID = nil
             }
-            uploadWorkspace.retain(stagedUpload)
-            return Self.projectUploadResponse(
-                response,
-                stagedPath: stagedUpload.filePath,
-                sourcePath: sourcePath)
+            var projectedResponse = response
+            for (stagedUpload, sourcePath) in zip(stagedUploads, sourcePaths) {
+                uploadWorkspace.retain(stagedUpload)
+                projectedResponse = Self.projectUploadResponse(
+                    projectedResponse,
+                    stagedPath: stagedUpload.filePath,
+                    sourcePath: sourcePath)
+            }
+            return projectedResponse
         } catch {
             if self.activeUploadID == uploadID {
                 self.activeUploadID = nil
             }
-            uploadWorkspace.retain(stagedUpload)
-            throw BrowserMCPCallFailure.mayHaveDispatched(Self.projectUploadError(
-                error,
-                stagedPath: stagedUpload.filePath,
-                sourcePath: sourcePath))
+            var projectedError = error
+            for (stagedUpload, sourcePath) in zip(stagedUploads, sourcePaths) {
+                uploadWorkspace.retain(stagedUpload)
+                projectedError = Self.projectUploadError(
+                    projectedError,
+                    stagedPath: stagedUpload.filePath,
+                    sourcePath: sourcePath)
+            }
+            throw BrowserMCPCallFailure.mayHaveDispatched(projectedError)
         }
     }
 

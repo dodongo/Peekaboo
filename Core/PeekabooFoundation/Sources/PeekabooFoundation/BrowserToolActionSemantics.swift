@@ -66,6 +66,7 @@ public enum BrowserToolActionSemantics: Equatable, Sendable {
         "lighthouse_audit",
         "navigate_page",
         "new_page",
+        "peekaboo_locator_action",
         "press_key",
         "reload_extension",
         "resize_page",
