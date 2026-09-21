@@ -1458,9 +1458,13 @@ extension PeekabooBridgeServer {
                       payload.elementPreflight?.isCanonical != false
                 else { throw self.invalidBrowserSessionRequest() }
             } else {
-                guard payload.expectedProviderSessionEpoch == nil,
-                      payload.elementPreflight == nil
-                else { throw self.invalidBrowserSessionRequest() }
+                guard payload.elementPreflight == nil else { throw self.invalidBrowserSessionRequest() }
+                if let epoch = payload.expectedProviderSessionEpoch {
+                    guard epoch != Self.zeroBrowserSessionID,
+                          payload.expectedConnectionReceipt?.isCanonicalExecutionTarget == true,
+                          payload.connectionPolicy == .requireExistingLiveReceipt
+                    else { throw self.invalidBrowserSessionRequest() }
+                }
             }
         case let .browserSessionBootstrap(payload):
             guard payload.claimID != Self.zeroBrowserSessionID else {

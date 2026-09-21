@@ -2374,7 +2374,8 @@ final class StubServices: PeekabooBridgeServiceProviding {
             connectionReceipt: self.browserExecutionReceiptOverride ?? expectedConnectionReceipt,
             completedCallCount: self.browserCompletedCallCount ?? request.resolvedCalls.count,
             dispatchedCallCount: self.browserDispatchedCallCount ?? request.resolvedCalls.count,
-            actionFailure: actionFailure)
+            actionFailure: actionFailure,
+            providerSessionEpoch: self.browserProviderSessionEpoch)
     }
 }
 
