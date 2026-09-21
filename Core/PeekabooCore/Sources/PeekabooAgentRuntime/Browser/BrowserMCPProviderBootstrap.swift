@@ -32,18 +32,34 @@ enum BrowserMCPProviderBootstrap {
     const scriptTarget = pathToFileURL(join(root, 'build/src/tools/script.js')).href;
     const toolsTarget = pathToFileURL(join(root, 'build/src/tools/tools.js')).href;
     const snapshotTarget = pathToFileURL(join(root, 'build/src/tools/snapshot.js')).href;
+    const networkTarget = pathToFileURL(join(root, 'build/src/tools/network.js')).href;
+    const assetBundleSource = Buffer.from('__PEEKABOO_ASSET_BUNDLE_SOURCE__', 'base64').toString('utf8');
     const pageWaitSource = Buffer.from('__PEEKABOO_PAGE_WAIT_SOURCE__', 'base64').toString('utf8');
     const locatorSource = Buffer.from('__PEEKABOO_LOCATOR_SOURCE__', 'base64').toString('utf8');
     const loader = `
       import {createHash} from 'node:crypto';
-      let target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget;
-      let locatorSource, pageWaitSource;
+      let target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget, networkTarget;
+      let locatorSource, pageWaitSource, assetBundleSource;
       export function initialize(data) {
-        ({target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget,
-          locatorSource, pageWaitSource} = data);
+        ({target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget, networkTarget,
+          locatorSource, pageWaitSource, assetBundleSource} = data);
       }
       export async function load(url, context, nextLoad) {
         const result = await nextLoad(url, context);
+        if (url === networkTarget) {
+          const source = Buffer.from(result.source);
+          if (createHash('sha256').update(source).digest('hex') !==
+              '09e9e70b9d050101c08857acc115f885f5f68e4bda4fb4e7e4e829b53eca9e16') {
+            throw new Error('Peekaboo: unaudited network tool');
+          }
+          const moduleURL = 'data:text/javascript,' + encodeURIComponent(assetBundleSource);
+          const imports = 'import {extendAssetBundle, extendWorkspaceExport} from ' + JSON.stringify(moduleURL) + ';\\n';
+          const updated = source.toString('utf8')
+            .replace('export const getNetworkRequest = definePageTool({',
+              'export const getNetworkRequest = definePageTool(extendWorkspaceExport(extendAssetBundle({')
+            .replace('});\\n//# sourceMappingURL=network.js.map', '}, zod), zod));\\n//# sourceMappingURL=network.js.map');
+          return {...result, source: imports + updated};
+        }
         if (url === snapshotTarget) {
           const source = Buffer.from(result.source);
           if (createHash('sha256').update(source).digest('hex') !==
@@ -128,8 +144,8 @@ enum BrowserMCPProviderBootstrap {
       }
     `;
     register('data:text/javascript,' + encodeURIComponent(loader), {
-      data: {target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget,
-        locatorSource, pageWaitSource},
+      data: {target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget, networkTarget,
+        locatorSource, pageWaitSource, assetBundleSource},
     });
     // Fail before starting the server (and before any browser connection) if the patch cannot load.
     await import(target);
@@ -173,4 +189,8 @@ enum BrowserMCPProviderBootstrap {
         .replacingOccurrences(
             of: "__PEEKABOO_PAGE_WAIT_SOURCE__",
             with: Data(BrowserMCPPageWait.source.utf8).base64EncodedString())
+        .replacingOccurrences(
+            of: "__PEEKABOO_ASSET_BUNDLE_SOURCE__",
+            with: Data((BrowserMCPWorkspaceExport.source + "\n" + BrowserMCPAssetBundle.source).utf8)
+                .base64EncodedString())
 }
