@@ -39,6 +39,7 @@ public struct BrowserMCPElementPreflight: Equatable, Sendable {
 public struct BrowserMCPStatus: Sendable {
     public let isConnected: Bool
     public let toolCount: Int
+    public let providerFeatures: [String]?
     public let detectedBrowsers: [DetectedBrowser]
     public let connectionReceipt: BrowserMCPConnectionReceipt?
     public let providerSessionEpoch: BrowserMCPProviderSessionEpoch?
@@ -48,6 +49,7 @@ public struct BrowserMCPStatus: Sendable {
     public init(
         isConnected: Bool,
         toolCount: Int,
+        providerFeatures: [String]? = nil,
         detectedBrowsers: [DetectedBrowser],
         connectionReceipt: BrowserMCPConnectionReceipt? = nil,
         providerSessionEpoch: BrowserMCPProviderSessionEpoch? = nil,
@@ -56,6 +58,7 @@ public struct BrowserMCPStatus: Sendable {
     {
         self.isConnected = isConnected
         self.toolCount = toolCount
+        self.providerFeatures = providerFeatures
         self.detectedBrowsers = detectedBrowsers
         self.connectionReceipt = connectionReceipt
         self.providerSessionEpoch = providerSessionEpoch

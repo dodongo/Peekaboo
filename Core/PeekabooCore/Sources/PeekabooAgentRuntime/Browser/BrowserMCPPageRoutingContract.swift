@@ -83,6 +83,7 @@ enum BrowserMCPPageRoutingContract {
         "fill",
         "fill_form",
         "hover",
+        "peekaboo_locator_action",
         "press_key",
         "take_snapshot",
         "upload_file",
@@ -111,6 +112,7 @@ enum BrowserMCPPageRoutingContract {
         "list_network_requests",
         "list_webmcp_tools",
         "navigate_page",
+        "peekaboo_locator_action",
         "performance_analyze_insight",
         "performance_start_trace",
         "performance_stop_trace",
@@ -227,7 +229,8 @@ enum BrowserMCPPageRoutingContract {
             .pages
         case "take_snapshot", "wait_for":
             .snapshotAlways
-        case "click", "click_at", "drag", "fill", "fill_form", "hover", "press_key", "upload_file":
+        case "click", "click_at", "drag", "fill", "fill_form", "hover", "press_key", "upload_file",
+             "peekaboo_locator_action":
             .snapshotWhen(arguments["includeSnapshot"] as? Bool == true)
         case "execute_3p_developer_tool":
             .thirdPartySnapshot

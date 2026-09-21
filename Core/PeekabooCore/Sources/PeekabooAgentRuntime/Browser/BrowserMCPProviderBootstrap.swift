@@ -1,3 +1,5 @@
+import Foundation
+
 /// Embedded in both the CLI and GUI host so npm-distributed providers receive the same audited patch.
 enum BrowserMCPProviderBootstrap {
     /// Keep this executable source covered by scripts/test-chrome-devtools-mcp-contract.mjs.
@@ -27,12 +29,70 @@ enum BrowserMCPProviderBootstrap {
     const target = pathToFileURL(join(root, 'build/src/ToolHandler.js')).href;
     const browserTarget = pathToFileURL(join(root, 'build/src/browser.js')).href;
     const transportTarget = pathToFileURL(join(root, 'build/src/third_party/index.js')).href;
+    const scriptTarget = pathToFileURL(join(root, 'build/src/tools/script.js')).href;
+    const toolsTarget = pathToFileURL(join(root, 'build/src/tools/tools.js')).href;
+    const snapshotTarget = pathToFileURL(join(root, 'build/src/tools/snapshot.js')).href;
+    const pageWaitSource = Buffer.from('__PEEKABOO_PAGE_WAIT_SOURCE__', 'base64').toString('utf8');
+    const locatorSource = Buffer.from('__PEEKABOO_LOCATOR_SOURCE__', 'base64').toString('utf8');
     const loader = `
       import {createHash} from 'node:crypto';
-      let target, browserTarget, transportTarget;
-      export function initialize(data) { ({target, browserTarget, transportTarget} = data); }
+      let target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget;
+      let locatorSource, pageWaitSource;
+      export function initialize(data) {
+        ({target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget,
+          locatorSource, pageWaitSource} = data);
+      }
       export async function load(url, context, nextLoad) {
         const result = await nextLoad(url, context);
+        if (url === snapshotTarget) {
+          const source = Buffer.from(result.source);
+          if (createHash('sha256').update(source).digest('hex') !==
+              'd48d0b8199d0a423f899fb706ef483854d6846833f31d566bfb37891a3e3fc5c') {
+            throw new Error('Peekaboo: unaudited page wait tool');
+          }
+          const moduleURL = 'data:text/javascript,' + encodeURIComponent(pageWaitSource);
+          const imports = 'import {extendPageWait} from ' + JSON.stringify(moduleURL) + ';\\n';
+          const updated = source.toString('utf8')
+            .replace('export const waitFor = definePageTool({',
+              'export const waitFor = definePageTool(extendPageWait({')
+            .replace('});\\n//# sourceMappingURL=snapshot.js.map', '}, zod));\\n//# sourceMappingURL=snapshot.js.map');
+          return {...result, source: imports + updated};
+        }
+        if (url === scriptTarget) {
+          const source = Buffer.from(result.source);
+          if (createHash('sha256').update(source).digest('hex') !==
+              '99a0a8c40209c71fb7ca2822fa7150f0550d76a4c032d465e927456501093279') {
+            throw new Error('Peekaboo: unaudited script evaluation tool');
+          }
+          const updated = source.toString('utf8')
+            .replace('waitForStableDom: zod',
+              'skipNavigationWait: zod.boolean().optional()' +
+              '.describe("Read-only scripts only; requires waitForStableDom=false"), waitForStableDom: zod')
+            .replace('filePath, waitForStableDom, } = request.params;',
+              'filePath, waitForStableDom, skipNavigationWait, } = request.params; ' +
+              'if (skipNavigationWait && waitForStableDom !== false) ' +
+              'throw new Error("skipNavigationWait requires waitForStableDom=false"); ' +
+              'if (skipNavigationWait && serviceWorkerId) ' +
+              'throw new Error("skipNavigationWait does not support service workers");')
+            .replace("{ handleDialog: dialogAction ?? 'accept', waitForStableDom });",
+              "{ handleDialog: dialogAction ?? 'accept', waitForStableDom, " +
+              "expectNavigationIn: skipNavigationWait ? 0 : undefined });");
+          return {...result, source: updated};
+        }
+        if (url === toolsTarget) {
+          const source = Buffer.from(result.source);
+          if (createHash('sha256').update(source).digest('hex') !==
+              'a0ec03e765330fe0a43153620610af4baafbc6c9dfb54ae2456b74b43f75f1cf') {
+            throw new Error('Peekaboo: unaudited Chrome DevTools MCP tool registry');
+          }
+          const moduleURL = 'data:text/javascript,' + encodeURIComponent(locatorSource);
+          const imports = 'import {createLocatorTool} from ' + JSON.stringify(moduleURL) + ';\\n' +
+            "import {zod as peekabooZod} from '../third_party/index.js';\\n" +
+            "import {parseKey as peekabooParseKey} from '../utils/keyboard.js';\\n";
+          const updated = source.toString('utf8').replace('const tools = [];',
+            'const tools = [createLocatorTool({zod: peekabooZod, parseKey: peekabooParseKey})];');
+          return {...result, source: imports + updated};
+        }
         if (url === transportTarget) {
           const source = Buffer.from(result.source);
           if (createHash('sha256').update(source).digest('hex') !==
@@ -67,7 +127,10 @@ enum BrowserMCPProviderBootstrap {
         return {...result, source: source.toString('utf8').replace(before, after)};
       }
     `;
-    register('data:text/javascript,' + encodeURIComponent(loader), {data: {target, browserTarget, transportTarget}});
+    register('data:text/javascript,' + encodeURIComponent(loader), {
+      data: {target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget,
+        locatorSource, pageWaitSource},
+    });
     // Fail before starting the server (and before any browser connection) if the patch cannot load.
     await import(target);
     const {ensureBrowserConnected} = await import(browserTarget);
@@ -103,5 +166,11 @@ enum BrowserMCPProviderBootstrap {
     };
     process.argv = [process.execPath, entry, ...process.argv.slice(1)];
     await import(pathToFileURL(entry).href);
-    """#
+    """#.replacingOccurrences(
+        of: "__PEEKABOO_LOCATOR_SOURCE__",
+        with: Data((BrowserMCPInputTransfers.source + "\n" + BrowserMCPLocatorResolver.source).utf8)
+            .base64EncodedString())
+        .replacingOccurrences(
+            of: "__PEEKABOO_PAGE_WAIT_SOURCE__",
+            with: Data(BrowserMCPPageWait.source.utf8).base64EncodedString())
 }

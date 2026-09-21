@@ -132,6 +132,31 @@ struct BrowserMCPSessionManagerTests {
     }
 
     @Test
+    func `ordinary service atomically rejects a stale root epoch before input`() async throws {
+        let provider = MockBrowserMCPManager()
+        let session = Self.exactSession(manager: provider)
+        let service = BrowserMCPService(sessionManager: session)
+        let first = try await service.connect(channel: .stable)
+        let binding = try BrowserMCPExecutionSessionBinding(
+            connectionReceipt: #require(first.connectionReceipt),
+            providerSessionEpoch: #require(first.providerSessionEpoch))
+        let calls = [BrowserMCPMappedCall(toolName: "list_pages", arguments: [:])]
+        let valid = try await service.executeSequence(calls, channel: .stable, expectedSessionBinding: binding)
+        #expect(valid.providerSessionEpoch == binding.providerSessionEpoch)
+        await service.disconnect()
+        let second = try await service.connect(channel: .stable)
+        #expect(second.connectionReceipt == first.connectionReceipt)
+        provider.executedTools.removeAll()
+        await #expect(throws: BrowserMCPConnectionError.expectedProviderSessionEpochMismatch) {
+            _ = try await service.executeSequence(
+                [BrowserMCPMappedCall(toolName: "click", arguments: ["uid": "7_1"])],
+                channel: .stable,
+                expectedSessionBinding: binding)
+        }
+        #expect(provider.executedTools.isEmpty)
+    }
+
+    @Test
     func `element preflight rejects stale document uid before mutation dispatch`() async throws {
         let provider = MockBrowserMCPManager()
         let session = Self.exactSession(manager: provider)
@@ -5157,6 +5182,77 @@ extension BrowserMCPSessionManagerTests {
         #expect(FileManager.default.fileExists(atPath: advertisedRoot))
         await session.disconnect()
         #expect(!FileManager.default.fileExists(atPath: advertisedRoot))
+    }
+
+    @Test
+    func multipleUploadsAreStagedAndDispatchedTogether() async throws {
+        let fixture = try UploadStagingFixture()
+        defer { fixture.cleanup() }
+        let sources = try ["first.txt", "second.txt"].map {
+            try fixture.write(name: $0, contents: Data($0.utf8))
+        }
+        let manager = MockBrowserMCPManager()
+        let session = Self.session(
+            manager: manager,
+            browsers: [Self.browser(pid: 111, generation: 8111)],
+            uploadStager: fixture.stager())
+        var stagedPaths: [String] = []
+        manager.executeHandler = { toolName, arguments in
+            guard toolName == "upload_file" else { return .text("ok") }
+            stagedPaths = try #require(arguments["filePaths"] as? [String])
+            #expect(stagedPaths.count == 2)
+            #expect(arguments["filePath"] == nil)
+            for (path, source) in zip(stagedPaths, sources) {
+                #expect(path != source.path)
+                #expect(try Data(contentsOf: URL(fileURLWithPath: path)) == Data(source.lastPathComponent.utf8))
+            }
+            return .text(stagedPaths.joined(separator: "\n"))
+        }
+        _ = try await session.connect(channel: .stable)
+        manager.executedTools.removeAll()
+        let response = try await session.execute(
+            toolName: "upload_file",
+            arguments: ["uid": "111_1", "filePaths": sources.map(\.path)],
+            channel: .stable)
+        #expect(manager.executedTools == ["upload_file"])
+        guard case let .text(text, _, _)? = response.content.first else {
+            Issue.record("Expected projected upload response")
+            return
+        }
+        #expect(text == sources.map(\.path).joined(separator: "\n"))
+        #expect(stagedPaths.allSatisfy { FileManager.default.fileExists(atPath: $0) })
+        await session.disconnect()
+        #expect(stagedPaths.allSatisfy { !FileManager.default.fileExists(atPath: $0) })
+    }
+
+    @Test
+    func invalidMultipleUploadsNeverDispatchOrRetainPartialStaging() async throws {
+        let fixture = try UploadStagingFixture()
+        defer { fixture.cleanup() }
+        let source = try fixture.write(name: "first.txt", contents: Data("first".utf8))
+        let manager = MockBrowserMCPManager()
+        let session = Self.session(
+            manager: manager,
+            browsers: [Self.browser(pid: 111, generation: 8111)],
+            uploadStager: fixture.stager())
+        _ = try await session.connect(channel: .stable)
+        let root = try #require(manager.addedConfigs.first?.env["TMPDIR"])
+        manager.executedTools.removeAll()
+        let invalidArguments: [[String: Any]] = [
+            ["filePaths": [source.path, "relative.txt"]],
+            ["filePaths": [String]()],
+            ["filePaths": Array(repeating: source.path, count: 17)],
+            ["filePaths": [source.path], "filePath": source.path],
+        ]
+        for arguments in invalidArguments {
+            await #expect(throws: BrowserMCPUploadStagingError.self) {
+                _ = try await session.execute(toolName: "upload_file", arguments: arguments, channel: .stable)
+            }
+            #expect(manager.executedTools.isEmpty)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: root).isEmpty)
+            #expect(manager.connected)
+        }
+        await session.disconnect()
     }
 
     @Test

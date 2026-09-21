@@ -38,6 +38,7 @@ public enum PeekabooBridgeBrowserStatusObservation: String, Codable, Sendable, E
 public struct PeekabooBridgeBrowserStatus: Codable, Sendable, Equatable {
     public let isConnected: Bool
     public let toolCount: Int
+    public let providerFeatures: [String]?
     public let detectedBrowsers: [PeekabooBridgeBrowserInfo]
     public let connectionReceipt: PeekabooBridgeBrowserConnectionReceipt?
     public let error: String?
@@ -48,6 +49,7 @@ public struct PeekabooBridgeBrowserStatus: Codable, Sendable, Equatable {
     public init(
         isConnected: Bool,
         toolCount: Int,
+        providerFeatures: [String]? = nil,
         detectedBrowsers: [PeekabooBridgeBrowserInfo],
         connectionReceipt: PeekabooBridgeBrowserConnectionReceipt? = nil,
         error: String? = nil,
@@ -56,6 +58,7 @@ public struct PeekabooBridgeBrowserStatus: Codable, Sendable, Equatable {
     {
         self.isConnected = isConnected
         self.toolCount = toolCount
+        self.providerFeatures = providerFeatures
         self.detectedBrowsers = detectedBrowsers
         self.connectionReceipt = connectionReceipt
         self.error = error
