@@ -14,6 +14,7 @@ public struct BrowserTool: MCPTool {
     private let executionPolicy: MCPToolExecutionPolicy
     private let instructionAudience: BrowserToolInstructionAudience
     private let capabilitySession: BrowserToolCapabilitySession?
+    private let commandLineSessionBinding: BrowserMCPExecutionSessionBinding?
 
     public let name = "browser"
     public var description: String {
@@ -163,8 +164,11 @@ public struct BrowserTool: MCPTool {
     public init(
         context: MCPToolContext = .shared,
         client: (any BrowserMCPClientProviding)? = nil,
-        instructionAudience: BrowserToolInstructionAudience = .mcp)
+        instructionAudience: BrowserToolInstructionAudience = .mcp,
+        commandLineSessionBinding: BrowserMCPExecutionSessionBinding? = nil)
     {
+        precondition(commandLineSessionBinding == nil || instructionAudience == .commandLine)
+        self.commandLineSessionBinding = commandLineSessionBinding
         self.client = client ?? context.browser
         self.executionPolicy = context.executionPolicy
         self.instructionAudience = instructionAudience
@@ -180,6 +184,7 @@ public struct BrowserTool: MCPTool {
         instructionAudience: BrowserToolInstructionAudience = .mcp)
     {
         self.client = client
+        self.commandLineSessionBinding = nil
         self.executionPolicy = executionPolicy
         self.instructionAudience = instructionAudience
         self.capabilitySession = nil
@@ -391,7 +396,7 @@ public struct BrowserTool: MCPTool {
                 arguments: arguments,
                 sessionBinding: sessionBinding)
         } else {
-            sessionBinding = nil
+            sessionBinding = self.commandLineSessionBinding
             resolved = nil
         }
         let providerArguments = resolved?.arguments ?? arguments
@@ -402,7 +407,7 @@ public struct BrowserTool: MCPTool {
                 action: action,
                 arguments: providerArguments)
         }
-        if sessionBinding != nil,
+        if resolved != nil,
            calls.contains(where: { call in
                call.toolName == "take_snapshot" && call.arguments["filePath"] != nil
            })
@@ -549,7 +554,7 @@ public struct BrowserTool: MCPTool {
                 delivery: delivery,
                 callCount: calls.count,
                 providerSemantics: providerSemantics),
-            payloadIsError: result.payload.isError,
+            payload: result.payload,
             semantics: semantics,
             delivery: delivery)
         let executionMetadata = BrowserMCPExecutionEvidence.split(result.payload.meta)
@@ -637,16 +642,25 @@ public struct BrowserTool: MCPTool {
 
     private static func validatedOutcome(
         _ outcome: DesktopActionOutcome?,
-        payloadIsError: Bool,
+        payload: ToolResponse,
         semantics: BrowserMCPPageRoutingContract.ActionSemantics,
         delivery: DesktopActionOutcome.Delivery) throws -> DesktopActionOutcome?
     {
+        let payloadIsError = payload.isError
+        let providerError = if payloadIsError,
+                               case let .text(text: text, annotations: _, _meta: _) = payload.content.first,
+                               !text.isEmpty
+        {
+            " Provider error: " + String(text.prefix(1000))
+        } else {
+            ""
+        }
         guard let outcome else {
             guard semantics == .readOnly else {
                 throw DesktopActionFailure.indeterminate(
                     delivery: delivery,
                     evidence: .completionUnknown,
-                    message: "Browser mutation returned without a canonical action outcome.",
+                    message: "Browser mutation returned without a canonical action outcome." + providerError,
                     hint: "Observe the browser before retrying and update the runtime host.")
             }
             return nil
@@ -669,7 +683,8 @@ public struct BrowserTool: MCPTool {
                 delivery: outcome.delivery,
                 evidence: .completionUnknown,
                 unitCount: outcome.dispatchState.unitCount,
-                message: "Browser provider returned an error payload with a successful canonical outcome.",
+                message: "Browser provider returned an error payload with a successful canonical outcome." +
+                    providerError,
                 hint: "Observe the browser before retrying and update the runtime host.")
         }
         return outcome
@@ -717,6 +732,11 @@ extension BrowserTool {
         }
         lines.append("Tools: \(status.observation == .confirmed ? String(status.toolCount) : "unknown")")
 
+        if status.observation == .confirmed, status.isConnected {
+            let features = status.providerFeatures.map { $0.isEmpty ? "none" : $0.joined(separator: ", ") }
+            lines.append("Features: \(features ?? "unknown")")
+        }
+
         if status.observation == .indeterminate {
             lines.append("Detected Chrome: unknown")
         } else if status.detectedBrowsers.isEmpty {
@@ -760,10 +780,17 @@ extension BrowserTool {
                 outcome: outcome))
     }
 
+    private func providerFeatureMetadata(_ status: BrowserMCPStatus) -> Value {
+        guard status.observation == .confirmed else { return .null }
+        guard status.isConnected else { return .array([]) }
+        return status.providerFeatures.map { .array($0.map(Value.string)) } ?? .null
+    }
+
     private func statusMetaFields(_ status: BrowserMCPStatus) -> [String: Value] {
         var meta: [String: Value] = [
             "connected": status.observation == .confirmed ? .bool(status.isConnected) : .null,
             "status_observation": .string(status.observation.rawValue),
+            "provider_features": self.providerFeatureMetadata(status),
             "tool_count": status.observation == .confirmed ? .int(status.toolCount) : .null,
             "browser_count": status.observation == .confirmed ? .int(status.detectedBrowsers.count) : .null,
             "channels": status.observation == .confirmed

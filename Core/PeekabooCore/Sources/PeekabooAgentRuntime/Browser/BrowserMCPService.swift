@@ -251,9 +251,23 @@ public protocol BrowserMCPClientProviding: AnyObject, Sendable {
         _ calls: [BrowserMCPMappedCall],
         channel: BrowserMCPChannel?,
         expectedConnectionReceipt: BrowserMCPConnectionReceipt) async throws -> BrowserMCPExecutionResult
+    @MainActor
+    func executeSequence(
+        _ calls: [BrowserMCPMappedCall],
+        channel: BrowserMCPChannel?,
+        expectedSessionBinding: BrowserMCPExecutionSessionBinding) async throws -> BrowserMCPExecutionResult
 }
 
 extension BrowserMCPClientProviding {
+    @MainActor
+    public func executeSequence(
+        _: [BrowserMCPMappedCall],
+        channel _: BrowserMCPChannel?,
+        expectedSessionBinding _: BrowserMCPExecutionSessionBinding) async throws -> BrowserMCPExecutionResult
+    {
+        throw BrowserMCPConnectionError.receiptBindingUnsupported
+    }
+
     public var supportsNativeBrowserConnectionBinding: Bool {
         false
     }
@@ -994,27 +1008,6 @@ public final class BrowserMCPService: BrowserMCPClientProviding, BrowserMCPActio
     }
 
     @MainActor
-    public func executeSequence(
-        _ calls: [BrowserMCPMappedCall],
-        channel: BrowserMCPChannel?,
-        expectedConnectionReceipt: BrowserMCPConnectionReceipt) async throws -> BrowserMCPExecutionResult
-    {
-        do {
-            let result = try await self.resolvedSessionManager().executeSequence(
-                calls,
-                channel: channel,
-                expectedConnectionReceipt: expectedConnectionReceipt)
-            if result.response.isError || result.actionFailure != nil {
-                await self.reconcileTargetOwnershipAfterExecutionFailure()
-            }
-            return result
-        } catch {
-            await self.reconcileTargetOwnershipAfterExecutionFailure()
-            throw error
-        }
-    }
-
-    @MainActor
     private var usesTargetOwnershipPool: Bool {
         self.ownedSession != nil || self.authenticatedSessionPool != nil
     }
@@ -1598,6 +1591,52 @@ public enum BrowserMCPConnectionError: LocalizedError, Equatable {
         case .targetLocked:
             "A different browser target is already connected. " +
                 "Disconnect it before selecting another channel or endpoint."
+        }
+    }
+}
+
+// Raw bridge execution preserves provider progress and binds the target under one execution gate.
+extension BrowserMCPService {
+    @MainActor
+    public func executeSequence(
+        _ calls: [BrowserMCPMappedCall],
+        channel: BrowserMCPChannel?,
+        expectedConnectionReceipt: BrowserMCPConnectionReceipt) async throws -> BrowserMCPExecutionResult
+    {
+        do {
+            let result = try await self.resolvedSessionManager().executeSequence(
+                calls,
+                channel: channel,
+                expectedConnectionReceipt: expectedConnectionReceipt)
+            if result.response.isError || result.actionFailure != nil {
+                await self.reconcileTargetOwnershipAfterExecutionFailure()
+            }
+            return result
+        } catch {
+            await self.reconcileTargetOwnershipAfterExecutionFailure()
+            throw error
+        }
+    }
+
+    @MainActor
+    public func executeSequence(
+        _ calls: [BrowserMCPMappedCall],
+        channel: BrowserMCPChannel?,
+        expectedSessionBinding: BrowserMCPExecutionSessionBinding) async throws -> BrowserMCPExecutionResult
+    {
+        do {
+            let result = try await self.resolvedSessionManager().executeSequence(
+                calls,
+                channel: channel,
+                expectedSessionBinding: expectedSessionBinding,
+                elementPreflight: nil)
+            if result.response.isError || result.actionFailure != nil {
+                await self.reconcileTargetOwnershipAfterExecutionFailure()
+            }
+            return result
+        } catch {
+            await self.reconcileTargetOwnershipAfterExecutionFailure()
+            throw error
         }
     }
 }

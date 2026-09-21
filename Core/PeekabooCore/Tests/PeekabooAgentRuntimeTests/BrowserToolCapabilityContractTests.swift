@@ -35,7 +35,8 @@ struct BrowserToolCapabilityContractTests {
             "select_page", "uninstall_pwa",
         ])
         #expect(BrowserMCPPageRoutingContract.snapshotResponseToolNames == [
-            "click", "click_at", "drag", "execute_3p_developer_tool", "fill", "fill_form", "hover", "press_key",
+            "click", "click_at", "drag", "execute_3p_developer_tool", "fill", "fill_form", "hover",
+            "peekaboo_locator_action", "press_key",
             "take_snapshot", "upload_file", "wait_for",
         ])
     }

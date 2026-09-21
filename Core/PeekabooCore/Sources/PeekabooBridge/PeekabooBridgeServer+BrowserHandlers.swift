@@ -148,7 +148,8 @@ extension PeekabooBridgeServer {
                 "The browser provider was cancelled after accepting the execution request.")
         }
         guard result.connectionReceipt == target.receipt,
-              scopedSessionID == nil || result.providerSessionEpoch == payload.expectedProviderSessionEpoch
+              payload.expectedProviderSessionEpoch == nil || result.providerSessionEpoch == payload
+                  .expectedProviderSessionEpoch
         else {
             if payload.isReadOnly {
                 throw DesktopActionFailure.preDispatchRefusal(

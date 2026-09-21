@@ -30,6 +30,7 @@ final class DaemonBrowserDiagnostics {
         return PeekabooBridgeBrowserStatus(
             isConnected: self.lastStatus?.isConnected ?? false,
             toolCount: self.lastStatus?.toolCount ?? 0,
+            providerFeatures: self.lastStatus?.providerFeatures,
             detectedBrowsers: self.lastStatus?.detectedBrowsers ?? [],
             connectionReceipt: self.lastStatus?.connectionReceipt,
             error: self.lastFailure ?? self.lastStatus.map {

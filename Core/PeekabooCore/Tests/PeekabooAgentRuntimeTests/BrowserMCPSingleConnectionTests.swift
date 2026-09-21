@@ -24,6 +24,7 @@ struct BrowserMCPSingleConnectionTests {
 
         let result = try await session.connect(channel: nil, browserURL: endpoint.browserURL)
         #expect(result.isConnected)
+        #expect(result.providerFeatures == ["locator:fill"])
         #expect(result.connectionReceipt?.browserVersion == "HeadlessChrome/152.0")
         let config = try #require(provider.configs.first)
         #expect(config.args.contains("--wsEndpoint=\(endpoint.webSocketDebuggerURL)"))
@@ -137,6 +138,8 @@ private final class SingleConnectionProvider: BrowserMCPManaging {
     func isServerConnected(name _: String) async -> Bool {
         self.connected
     }
+
+    func serverProviderFeatures(name _: String) async -> [String]? { ["locator:fill"] }
 
     func serverToolCount(name _: String) async -> Int {
         self.connected ? 30 : 0

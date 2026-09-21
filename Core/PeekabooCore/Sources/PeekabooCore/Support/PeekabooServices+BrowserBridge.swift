@@ -112,15 +112,29 @@ extension PeekabooServices: PeekabooBridgeBrowserConnectionResultProviding {
         let expectedReceipt = try Self.browserReceipt(from: expectedConnectionReceipt)
         let result: BrowserMCPExecutionResult
         do {
-            result = try await self.browser.executeSequence(
-                calls,
-                channel: Self.browserChannel(from: request.channel),
-                expectedConnectionReceipt: expectedReceipt)
+            if let epoch = request.expectedProviderSessionEpoch {
+                result = try await self.browser.executeSequence(
+                    calls,
+                    channel: Self.browserChannel(from: request.channel),
+                    expectedSessionBinding: BrowserMCPExecutionSessionBinding(
+                        connectionReceipt: expectedReceipt,
+                        providerSessionEpoch: BrowserMCPProviderSessionEpoch(rawValue: epoch)))
+            } else {
+                result = try await self.browser.executeSequence(
+                    calls,
+                    channel: Self.browserChannel(from: request.channel),
+                    expectedConnectionReceipt: expectedReceipt)
+            }
         } catch BrowserMCPConnectionError.expectedConnectionReceiptMismatch {
             throw DesktopActionFailure.preDispatchRefusal(
                 reason: .targetUnavailable,
                 message: "The exact browser connection changed before tool dispatch.",
                 hint: "Refresh browser status and retry against its new connection receipt.")
+        } catch BrowserMCPConnectionError.expectedProviderSessionEpochMismatch {
+            throw DesktopActionFailure.preDispatchRefusal(
+                reason: .targetUnavailable,
+                message: "The browser provider session changed before tool dispatch.",
+                hint: "Start a fresh browser stream; do not replay a partially completed batch.")
         } catch BrowserMCPConnectionError.receiptBindingUnsupported {
             throw DesktopActionFailure.preDispatchRefusal(
                 reason: .operationUnsupported,
@@ -173,6 +187,7 @@ extension PeekabooServices: PeekabooBridgeBrowserConnectionResultProviding {
         return PeekabooBridgeBrowserStatus(
             isConnected: status.isConnected,
             toolCount: status.toolCount,
+            providerFeatures: status.providerFeatures,
             detectedBrowsers: status.detectedBrowsers.map {
                 PeekabooBridgeBrowserInfo(
                     name: $0.name,
@@ -277,21 +292,16 @@ extension PeekabooBridgeJSONValue {
         switch value {
         case is NSNull:
             return .null
-        case let value as Bool:
-            return .bool(value)
-        case let value as Int:
-            return .int(value)
-        case let value as Double:
-            return .double(value)
+        // JSONSerialization bridges 0 and 1 to NSNumber, which also casts to Bool.
+        // Check the actual Core Foundation type before any Swift scalar casts.
         case let value as NSNumber:
             if CFGetTypeID(value) == CFBooleanGetTypeID() {
                 return .bool(value.boolValue)
             }
-            let double = value.doubleValue
-            if double.rounded() == double {
-                return .int(value.intValue)
+            if let integer = value as? Int {
+                return .int(integer)
             }
-            return .double(double)
+            return .double(value.doubleValue)
         case let value as String:
             return .string(value)
         case let value as [Any]:

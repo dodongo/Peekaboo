@@ -91,6 +91,10 @@ InjectedRuntimeBackedCommand {
         commandName: "browser",
         abstract: "Control Chrome page content through the browser MCP tool",
         discussion: """
+        `stream --page-id N --foreground --json` accepts bounded newline-delimited JSON
+        browser calls on stdin and emits one compact result envelope per call. It requires an existing
+        connection, stays bound to one page, and stops on errors or connection changes. See docs/browser-stream.md.
+
         Dedicated CLI wrapper around Peekaboo's browser MCP tool. Use it for DOM/page
         operations such as status, connect, navigate, snapshot, click, dom-click, fill, type,
         screenshots, console/network inspection, and performance traces.
@@ -128,6 +132,10 @@ InjectedRuntimeBackedCommand {
         self.logger.setJsonOutputMode(self.jsonOutput)
 
         do {
+            if self.action == "stream" {
+                try await self.runStream(using: runtime)
+                return
+            }
             let arguments = try self.arguments()
             let context = MCPToolContext(
                 services: self.services,
@@ -220,6 +228,10 @@ InjectedRuntimeBackedCommand {
     }
 
     func validateBeforeRuntime() throws {
+        if self.action == "stream" {
+            try self.validateStream()
+            return
+        }
         try self.validateHandoffEnvironment()
         _ = try self.arguments()
         try self.handoffReceiptStore()?.validateCanSave()
