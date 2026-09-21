@@ -253,7 +253,7 @@ extension PeekabooBridgeClient {
                 message: "This Bridge host cannot return a verifiable set-value result.",
                 hint: "Update and relaunch Peekaboo before retrying set-value.")
         }
-        if [.setValue, .performAction].contains(request.unwrappedOperationRequest.operation),
+        if [.setValue, .selectText, .performAction].contains(request.unwrappedOperationRequest.operation),
            !self.processGenerationBoundElementMutationsEnabled
         {
             throw DesktopActionFailure.preDispatchRefusal(

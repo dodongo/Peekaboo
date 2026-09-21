@@ -1,7 +1,7 @@
 import Foundation
 import PeekabooFoundation
 
-private typealias ResolvedElementMutationTarget = (
+typealias ResolvedElementMutationTarget = (
     element: AutomationElement,
     description: String,
     bundleIdentifier: String?,
@@ -195,7 +195,7 @@ extension UIAutomationService: ElementActionAutomationServiceProtocol {
             targetIdentity: execution.targetIdentity)
     }
 
-    private func resolveActionTarget(
+    func resolveActionTarget(
         _ target: String,
         snapshotId: String,
         targetProcessIdentifier: pid_t?) async throws
@@ -255,7 +255,7 @@ extension UIAutomationService: ElementActionAutomationServiceProtocol {
             standardErrorCode: .elementNotFound)
     }
 
-    private static func requireElementActionSnapshotID(_ snapshotId: String?) throws -> String {
+    static func requireElementActionSnapshotID(_ snapshotId: String?) throws -> String {
         guard let snapshotId = snapshotId?.trimmingCharacters(in: .whitespacesAndNewlines),
               !snapshotId.isEmpty
         else {
@@ -291,7 +291,7 @@ extension UIAutomationService: ElementActionAutomationServiceProtocol {
         return "\(element.id) \(element.type.rawValue): \(label)"
     }
 
-    private func elementMutationCaptureReceipt(snapshotId: String) async throws
+    func elementMutationCaptureReceipt(snapshotId: String) async throws
         -> DesktopOperationPlan.CaptureReceipt
     {
         let detectionResult: ElementDetectionResult
@@ -316,7 +316,7 @@ extension UIAutomationService: ElementActionAutomationServiceProtocol {
             exactWindowIdentityValidator: self.exactWindowIdentityValidator)
     }
 
-    private func validateElementMutationTarget(
+    func validateElementMutationTarget(
         _ target: ResolvedElementMutationTarget,
         receipt: DesktopOperationPlan.CaptureReceipt) throws
     {
@@ -334,7 +334,7 @@ extension UIAutomationService: ElementActionAutomationServiceProtocol {
         }
     }
 
-    private func normalizingElementMutationErrors<T>(
+    func normalizingElementMutationErrors<T>(
         _ operation: () async throws -> T) async throws -> T
     {
         do {

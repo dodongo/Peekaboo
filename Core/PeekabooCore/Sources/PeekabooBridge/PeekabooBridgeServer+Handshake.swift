@@ -245,7 +245,7 @@ extension PeekabooBridgeServer {
         {
             advertisedCapabilities.remove(PeekabooBridgeHostCapability.setValueResultTargetBinding)
         }
-        let elementMutationOperations: Set<PeekabooBridgeOperation> = [.setValue, .performAction]
+        let elementMutationOperations: Set<PeekabooBridgeOperation> = [.setValue, .selectText, .performAction]
         if !supportsAttestedOperationReceipts ||
             negotiated < PeekabooBridgeConstants.processGenerationBoundElementMutationsVersion ||
             !(self.services.automation is any UIAutomationActionOutcomeProviding) ||
@@ -433,6 +433,7 @@ extension PeekabooBridgeServer {
         {
             compatible.remove(.setValue)
             compatible.remove(.performAction)
+            compatible.remove(.selectText)
         }
         if !usesAttestedOperationReceipts {
             compatible.remove(.observeProcessGeneration)
@@ -479,6 +480,10 @@ extension PeekabooBridgeServer {
         {
             operations.remove(.setValue)
             operations.remove(.performAction)
+            operations.remove(.selectText)
+        }
+        if !(self.services.automation is any TextSelectionAutomationServiceProtocol) {
+            operations.remove(.selectText)
         }
         operations = Set(operations.filter {
             $0 != .setValue ||

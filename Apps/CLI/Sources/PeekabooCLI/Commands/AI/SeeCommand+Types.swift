@@ -264,6 +264,7 @@ struct UIElementSummary: Codable {
     let is_enabled: Bool?
     let is_selected: Bool?
     let is_value_settable: Bool?
+    var actions: [String]?
     let keyboard_shortcut: String?
 }
 

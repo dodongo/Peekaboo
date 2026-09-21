@@ -255,6 +255,16 @@ actor ActionLaneLatch {
 
 @MainActor
 final class ActionInputMockAutomationElement: AutomationElementRepresenting, @unchecked Sendable {
+    var selectedTextRange: NSRange?
+    var isSelectedTextRangeSettable = false
+    var selectionSetterDoesNotChange = false
+    var selectionSetCalls = 0
+
+    func setAutomationSelectedTextRange(_ range: NSRange) throws {
+        self.selectionSetCalls += 1
+        if !self.selectionSetterDoesNotChange { self.selectedTextRange = range }
+    }
+
     let name: String?
     let label: String?
     let roleDescription: String?

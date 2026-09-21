@@ -176,11 +176,7 @@ enum CommanderCLIBinder {
             parsedValues: parsedValues,
             environment: environment
         )
-        if commandType == SetValueCommand.self {
-            options.requiredElementActionOperations.insert(.setValue)
-        } else if commandType == ActionCommand.self {
-            options.requiredElementActionOperations.insert(.performAction)
-        }
+        Self.requireElementActionOperation(commandType, options: &options)
         if commandType == SeeCommand.self, values.flag("noScreenshot") {
             options.requiresInspectAccessibilityTree = true
         }
@@ -195,6 +191,18 @@ enum CommanderCLIBinder {
             environment: environment
         )
         return options
+    }
+
+    private static func requireElementActionOperation(
+        _ commandType: (any ParsableCommand.Type)?, options: inout CommandRuntimeOptions
+    ) {
+        if commandType == SelectTextCommand.self {
+            options.requiredElementActionOperations.insert(.selectText)
+        } else if commandType == SetValueCommand.self {
+            options.requiredElementActionOperations.insert(.setValue)
+        } else if commandType == ActionCommand.self {
+            options.requiredElementActionOperations.insert(.performAction)
+        }
     }
 
     private static func applyRuntimeTransportOptions(
@@ -409,9 +417,11 @@ enum CommanderCLIBinder {
         }
         if commandType == MoveCommand.self {
             return mayRefreshObservation && (values.singleOption("to") != nil ||
-                values.singleOption("on") != nil)
+                values.singleOption("on") != nil
+            )
         }
-        if commandType == SetValueCommand.self || commandType == ActionCommand.self {
+        if commandType == SetValueCommand.self || commandType == SelectTextCommand.self || commandType == ActionCommand
+            .self {
             let hasElementReference = values.singleOption("on")?
                 .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             let hasExplicitTarget = ["app", "pid", "windowId", "windowTitle", "windowIndex"]
@@ -459,6 +469,7 @@ enum CommanderCLIBinder {
             commandType == ScrollCommand.self ||
             commandType == DragCommand.self ||
             commandType == SetValueCommand.self ||
+            commandType == SelectTextCommand.self ||
             commandType == ActionCommand.self ||
             commandType == CaptureActionCommand.self ||
             commandType == WindowCommand.FocusSubcommand.self ||

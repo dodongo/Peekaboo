@@ -68,6 +68,7 @@ public enum PeekabooBridgeOperation: String, Codable, Sendable, CaseIterable, Ha
     case exactWindowPixelFocusType
     case foregroundModifierClick
     case setValue
+    case selectText
     case performAction
     case scroll
     case targetedScroll
@@ -170,6 +171,9 @@ public enum PeekabooBridgeOperation: String, Codable, Sendable, CaseIterable, Ha
         with version: PeekabooBridgeProtocolVersion) -> Set<Self>
     {
         var compatible = operations
+        if version < PeekabooBridgeConstants.textSelectionVersion {
+            compatible.remove(.selectText)
+        }
         if version < PeekabooBridgeProtocolVersion(major: 1, minor: 1) {
             compatible.remove(.targetedHotkey)
         }

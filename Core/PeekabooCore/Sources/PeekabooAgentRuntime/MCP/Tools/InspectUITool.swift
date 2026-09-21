@@ -27,6 +27,10 @@ public struct InspectUITool: MCPTool {
     public var inputSchema: Value {
         SchemaBuilder.object(
             properties: [
+                "output_format": SchemaBuilder.string(
+                    description: "Text summary (default) or full structured state without a duplicate text tree.",
+                    enum: ["text", "structured"],
+                    default: "text"),
                 "app_target": SchemaBuilder.string(
                     description: """
                     Optional. Specifies the app/window to inspect via Accessibility.
@@ -124,10 +128,11 @@ public struct InspectUITool: MCPTool {
             await snapshot.setTargetMetadata(from: snapshotResult.metadata.windowContext)
             await snapshot.setUIElements(self.convertElements(snapshotResult.elements.all))
 
-            let summaryText = await self.buildSummary(
-                snapshot: snapshot,
-                result: snapshotResult,
-                target: target)
+            let summaryText = if request.outputFormat == .structured {
+                "UI inspection: \(snapshotResult.elements.all.count) elements. Full state is in structuredContent."
+            } else {
+                await self.buildSummary(snapshot: snapshot, result: snapshotResult, target: target)
+            }
 
             var metadataValues: [String: Value] = [
                 "snapshot_id": .string(snapshot.id),
@@ -159,7 +164,10 @@ public struct InspectUITool: MCPTool {
 
             return ToolResponse(
                 content: [.text(text: summaryText, annotations: nil, _meta: nil)],
-                meta: mergedMeta)
+                meta: mergedMeta,
+                structuredContent: request.outputFormat == .structured
+                    ? InspectUIStructuredOutput.make(snapshotID: snapshot.id, result: snapshotResult)
+                    : nil)
         } catch {
             let presentedError = ObservationActionResultSupport.preservingFailure(
                 error,

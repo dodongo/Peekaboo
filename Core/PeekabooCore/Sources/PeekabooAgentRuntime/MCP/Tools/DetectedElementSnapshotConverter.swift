@@ -1,3 +1,4 @@
+import Foundation
 import PeekabooAutomationKit
 
 enum DetectedElementSnapshotConverter {
@@ -20,6 +21,9 @@ enum DetectedElementSnapshotConverter {
                 isEnabled: element.knownIsEnabled,
                 isSelected: element.isSelected,
                 isValueSettable: element.isValueSettable,
+                actions: element.attributes["actions"].flatMap {
+                    try? JSONDecoder().decode([String].self, from: Data($0.utf8))
+                },
                 parentId: nil,
                 children: [],
                 keyboardShortcut: element.attributes["keyboardShortcut"])

@@ -158,7 +158,8 @@ enum BridgeCapabilityPolicy {
         if options.requiresScreenCaptureKitOwnerCapability,
            !(self.defersClassicScreenRecordingPermission(options: options)
                ? self.supportsClassicCaptureWithoutScreenCaptureKit(for: handshake)
-               : self.supportsScreenCaptureKitProcessOwnership(for: handshake)) {
+               : self.supportsScreenCaptureKitProcessOwnership(for: handshake)
+           ) {
             return false
         }
         if options.requiresExactWindowROIObservation, !capabilities.exactWindowROIObservation {
@@ -530,14 +531,18 @@ enum BridgeCapabilityPolicy {
 
     static func supportsElementActions(for handshake: PeekabooBridgeHandshakeResponse) -> Bool {
         self.supportsElementAction(.setValue, for: handshake) ||
-            self.supportsElementAction(.performAction, for: handshake)
+            self.supportsElementAction(.performAction, for: handshake) ||
+            self.supportsElementAction(.selectText, for: handshake)
     }
 
     static func supportsElementAction(
         _ operation: PeekabooBridgeOperation,
         for handshake: PeekabooBridgeHandshakeResponse
     ) -> Bool {
-        guard operation == .setValue || operation == .performAction else { return false }
+        guard [.setValue, .performAction, .selectText].contains(operation) else { return false }
+        if operation == .selectText, handshake.negotiatedVersion < PeekabooBridgeConstants.textSelectionVersion {
+            return false
+        }
         return handshake.negotiatedVersion >= PeekabooBridgeConstants.processGenerationBoundElementMutationsVersion &&
             handshake.hostCapabilities?.contains(PeekabooBridgeHostCapability.attestedOperationReceipts) == true &&
             handshake.hostCapabilities?.contains(

@@ -999,7 +999,7 @@ private final class MockClipboardService: ClipboardServiceProtocol, @unchecked S
         self.slots[slot] = current
     }
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         self.restoreCallCount += 1
         if let restoreError {
             throw restoreError

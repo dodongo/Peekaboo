@@ -386,6 +386,22 @@ extension PeekabooBridgeClient {
         }
     }
 
+    public func selectTextWithOutcome(
+        target: String,
+        selection: TextSelectionRequest,
+        snapshotId: String?) async throws -> UIAutomationActionResult<ElementActionResult>
+    {
+        try await self.actionResult(
+            for: .selectText(.init(target: target, selection: selection, snapshotId: snapshotId)),
+            expectedResponse: "selectText",
+            requiresTargetIdentity: true,
+            operationReceiptRequirement: .required)
+        { response in
+            guard case let .elementActionResult(result) = response else { return nil }
+            return result
+        }
+    }
+
     public func performActionWithOutcome(
         target: String,
         actionName: String,

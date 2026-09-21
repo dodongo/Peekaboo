@@ -1445,7 +1445,7 @@ extension PeekabooBridgeServer {
         } else {
             resolvedHostCapabilities.remove(PeekabooBridgeHostCapability.setValueResultTargetBinding)
         }
-        let elementMutationOperations: Set<PeekabooBridgeOperation> = [.setValue, .performAction]
+        let elementMutationOperations: Set<PeekabooBridgeOperation> = [.setValue, .selectText, .performAction]
         if supportedVersions.upperBound >=
             PeekabooBridgeConstants.processGenerationBoundElementMutationsVersion,
             Self.supportsProcessGenerationBoundElementMutationProvider(services.automation),

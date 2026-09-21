@@ -615,7 +615,7 @@ private final class ExactPasteClipboardService: ClipboardServiceProtocol, @unche
         self.slots[slot] = current
     }
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         self.restoreCallCount += 1
         guard let saved = self.slots[slot] else { throw ClipboardServiceError.slotNotFound(slot) }
         self.current = saved

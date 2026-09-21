@@ -14,6 +14,31 @@ struct InspectUIToolExecutionTests {
     private static let uiSnapshots = MCPToolUISnapshotStore(owner: MCPToolSnapshotOwner())
 
     @Test
+    func structuredInspectionAvoidsDuplicatingTheTreeInText() async throws {
+        let result = ElementDetectionResult(
+            snapshotId: "fixture", screenshotPath: "",
+            elements: DetectedElements(buttons: [
+                DetectedElement(id: "B1", type: .button, label: "Save", bounds: .zero),
+            ]),
+            metadata: DetectionMetadata(detectionTime: 0, elementCount: 1, method: "AX"))
+        let automation = await MainActor.run {
+            InspectUITestAutomationService(accessibilityGranted: true, detectionResult: result)
+        }
+        let context = await Self.makeContext(automation: automation)
+        let response = try await InspectUITool(context: context).execute(
+            arguments: ToolArguments(raw: ["output_format": "structured"]))
+        #expect(!response.isError)
+        guard case let .object(output)? = response.structuredContent,
+              case let .array(elements)? = output["ui_elements"],
+              case let .text(text, _, _)? = response.content.first
+        else { Issue.record("Expected structured inspection response"); return }
+        #expect(elements.count == 1)
+        #expect(text.count < 150)
+        #expect(!text.contains("Save"))
+        #expect(response.meta != nil)
+    }
+
+    @Test
     func `Inspect UI tool returns text without screenshot`() async throws {
         let detectionResult = ElementDetectionResult(
             snapshotId: "snapshot-inspect",

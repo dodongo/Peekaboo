@@ -525,8 +525,9 @@ enum DetachedAXObservationWorker {
             descriptor.identifier,
             baseType: baseType,
             resolvedType: elementType)
+        let availableActions = self.actions(of: element)
         let exposesAction = self.actionableRoles.contains(normalizedRole) ||
-            (self.actionLookupRoles.contains(normalizedRole) && self.actions(of: element).contains(kAXPressAction))
+            (self.actionLookupRoles.contains(normalizedRole) && availableActions.contains(kAXPressAction))
         let isValueSettable = self.valueSettable(
             of: element,
             role: descriptor.role,
@@ -536,6 +537,12 @@ enum DetachedAXObservationWorker {
         let elementID = request.source == nil ?
             "elem_\(state.elements.count)" : "menuitem_\(state.elements.count)"
         var attributes = ["role": descriptor.role, "axEnabledKnown": String(descriptor.isEnabled != nil)]
+        if !availableActions.isEmpty,
+           let encoded = try? JSONEncoder().encode(availableActions),
+           let json = String(data: encoded, encoding: .utf8)
+        {
+            attributes["actions"] = json
+        }
         if let title = descriptor.title {
             attributes["title"] = title
         }

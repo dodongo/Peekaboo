@@ -112,6 +112,9 @@ extension SeeCommand {
                 is_enabled: element.knownIsEnabled,
                 is_selected: element.isSelected,
                 is_value_settable: mutationTargetingAvailable ? element.isValueSettable : nil,
+                actions: element.attributes["actions"].flatMap {
+                    try? JSONDecoder().decode([String].self, from: Data($0.utf8))
+                },
                 keyboard_shortcut: element.attributes["keyboardShortcut"]
             )
         }

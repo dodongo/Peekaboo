@@ -84,6 +84,7 @@ public nonisolated struct UIElement: Codable, Sendable {
     public let isEnabled: Bool?
     public let isSelected: Bool?
     public let isValueSettable: Bool?
+    public let actions: [String]?
     public let parentId: String?
     public let children: [String]
     public let keyboardShortcut: String?
@@ -114,6 +115,7 @@ public nonisolated struct UIElement: Codable, Sendable {
         isEnabled: Bool? = nil,
         isSelected: Bool? = nil,
         isValueSettable: Bool? = nil,
+        actions: [String]? = nil,
         parentId: String? = nil,
         children: [String] = [],
         keyboardShortcut: String? = nil)
@@ -134,6 +136,7 @@ public nonisolated struct UIElement: Codable, Sendable {
         self.isEnabled = isEnabled
         self.isSelected = isSelected
         self.isValueSettable = isValueSettable
+        self.actions = actions
         self.parentId = parentId
         self.children = children
         self.keyboardShortcut = keyboardShortcut

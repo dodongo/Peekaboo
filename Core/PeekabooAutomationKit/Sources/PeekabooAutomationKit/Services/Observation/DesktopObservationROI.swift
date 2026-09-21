@@ -387,6 +387,7 @@ public enum DesktopObservationROIProcessor {
                 isEnabled: element.isEnabled,
                 isSelected: element.isSelected,
                 isValueSettable: element.isValueSettable,
+                actions: element.actions,
                 parentId: element.parentId,
                 children: element.children,
                 keyboardShortcut: element.keyboardShortcut)

@@ -290,6 +290,7 @@ public actor PeekabooMCPServer {
 
         return CallTool.Result(
             content: response.content,
+            structuredContent: response.structuredContent,
             isError: response.isError,
             _meta: metadata)
     }

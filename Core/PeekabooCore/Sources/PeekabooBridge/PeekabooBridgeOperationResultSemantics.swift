@@ -457,6 +457,8 @@ extension PeekabooBridgeOperationResultSemantics {
             .setValue(
                 target: payload.target,
                 value: self.canonicalSetValueDisplayString(payload.value))
+        case let .selectText(payload):
+            .selectText(target: payload.target, text: payload.selection.selectedText)
         case let .performAction(payload):
             .performAction(target: payload.target, actionName: payload.actionName)
         case .attestedOperation,
@@ -638,7 +640,7 @@ extension PeekabooBridgeOperationResultSemantics {
         case .click, .type, .typeActions, .targetedTypeActions, .exactWindowTargetedTypeActions,
              .exactWindowPixelFocusType,
              .foregroundModifierClick,
-             .setValue, .performAction, .scroll, .targetedScroll, .hotkey, .targetedHotkey,
+             .setValue, .selectText, .performAction, .scroll, .targetedScroll, .hotkey, .targetedHotkey,
              .exactWindowTargetedHotkey, .targetedClick, .exactWindowTargetedClick,
              .focusWindow, .moveWindow, .resizeWindow, .setWindowBounds, .closeWindow,
              .backgroundCloseWindow, .minimizeWindow, .restoreWindow, .maximizeWindow:
@@ -860,7 +862,7 @@ extension PeekabooBridgeOperationResultSemantics {
             return [rule(globalForeground, .variable)]
         case .swipe, .drag, .moveMouse:
             return [rule(globalForeground, .exact(1))]
-        case .setValue:
+        case .setValue, .selectText:
             return [rule(valueBackground, .exact(1))]
         case .performAction:
             return [rule(axBackground, .exact(1))]

@@ -38,6 +38,9 @@ extension InMemorySnapshotManager {
                 isEnabled: element.knownIsEnabled,
                 isSelected: element.isSelected,
                 isValueSettable: element.isValueSettable,
+                actions: element.attributes["actions"].flatMap {
+                    try? JSONDecoder().decode([String].self, from: Data($0.utf8))
+                },
                 keyboardShortcut: element.attributes["keyboardShortcut"])
             uiMap[element.id] = uiElement
         }
@@ -95,6 +98,12 @@ extension InMemorySnapshotManager {
             var attributes: [String: String] = [:]
             if let identifier = uiElement.identifier {
                 attributes["identifier"] = identifier
+            }
+            if let actions = uiElement.actions,
+               let encoded = try? JSONEncoder().encode(actions),
+               let json = String(data: encoded, encoding: .utf8)
+            {
+                attributes["actions"] = json
             }
             if let shortcut = uiElement.keyboardShortcut {
                 attributes["keyboardShortcut"] = shortcut

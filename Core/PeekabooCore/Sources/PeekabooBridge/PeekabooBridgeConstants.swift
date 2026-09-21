@@ -71,7 +71,10 @@ public enum PeekabooBridgeConstants {
     }
 
     /// Current protocol version supported by this build.
-    public static let protocolVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 38)
+    public static let protocolVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 39)
+
+    /// First protocol with receipt-bound substring selection and cursor placement.
+    public static let textSelectionVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 39)
 
     /// First protocol with one-shot, receipt-bound foreground-connect handoff to a caller-scoped browser session.
     public static let browserConnectionHandoffVersion =

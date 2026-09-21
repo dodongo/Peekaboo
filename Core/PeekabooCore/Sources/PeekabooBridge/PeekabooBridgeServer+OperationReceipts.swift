@@ -312,6 +312,7 @@ extension PeekabooBridgeServer {
         // Shipped clients reconstruct the digest after decoding. Project unknown fields before hashing or signing.
         let response = response.projectingScreenCaptureKitDiagnostics(
             offered: context.claim.negotiatedCapabilities.screenCaptureKitOwnershipDiagnostics)
+            .projectingBrowserFeatures(for: context.claim.negotiatedCapabilities.protocolVersion)
         let receiptPayload = try PeekabooBridgeOperationReceiptPayload(
             requestID: context.requestPayload.requestID,
             sessionID: context.requestPayload.sessionID,

@@ -430,3 +430,20 @@ UIAutomationGlobalPointerActionResultProviding {
             : .serviceUnavailable(reason ?? fallback)
     }
 }
+
+extension RemoteUIAutomationService: TextSelectionAutomationServiceProtocol {
+    public func selectTextWithOutcome(
+        target: String,
+        selection: TextSelectionRequest,
+        snapshotId: String?) async throws -> UIAutomationActionResult<ElementActionResult>
+    {
+        guard (self as? any ElementActionAutomationServiceProtocol)?
+            .supportsProcessGenerationBoundElementMutations == true
+        else {
+            throw PeekabooError.serviceUnavailable("Bridge host cannot bind text selection to a process generation")
+        }
+        return try await self.remoteAction(snapshotId: snapshotId) {
+            try await self.client.selectTextWithOutcome(target: target, selection: selection, snapshotId: snapshotId)
+        }
+    }
+}

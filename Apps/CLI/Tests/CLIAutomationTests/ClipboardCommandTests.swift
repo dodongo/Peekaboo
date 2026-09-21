@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import PeekabooAutomationKit
 import PeekabooFoundation
@@ -7,6 +8,26 @@ import UniformTypeIdentifiers
 
 @Suite(.tags(.safe), .serialized)
 struct ClipboardCommandTests {
+    @Test
+    @MainActor
+    func `Clipboard restore reports an empty saved slot as successful`() async throws {
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        let clipboard = ClipboardService(pasteboard: pasteboard)
+        try clipboard.save(slot: "empty")
+        _ = try clipboard.set(ClipboardPayloadBuilder.textRequest(text: "temporary"))
+        let services = TestServicesFactory.makePeekabooServices(clipboard: clipboard)
+        let arguments = ["clipboard", "restore", "--slot", "empty", "--json"]
+        let result = try await InProcessCommandRunner.run(arguments, services: services)
+        try result.validateExitStatus(allowedExitCodes: [0], arguments: arguments)
+        let envelope = try ActionEnvelopeTestProbe.decode(result.stdout)
+        #expect(envelope.success)
+        ActionEnvelopeTestAssertions.expectCanonicalOutcome(
+            .confirmedChange(delivery: ClipboardMutationResultSemantics.delivery), in: envelope)
+        #expect(pasteboard.types?.isEmpty != false)
+        #expect(!result.stdout.contains("public.utf8-plain-text"))
+    }
+
     @Test
     func `Clipboard rejects conflicting action spellings as validation JSON`() async throws {
         let result = try await InProcessCommandRunner.runShared(
@@ -240,7 +261,7 @@ private final class ClipboardOutcomeService: ClipboardServiceActionResultProvidi
         self.slots[slot] = current
     }
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         self.restoreCallCount += 1
         guard let result = self.slots[slot] else {
             throw ClipboardServiceError.slotNotFound(slot)
@@ -261,7 +282,7 @@ private final class ClipboardOutcomeService: ClipboardServiceActionResultProvidi
         return DesktopActionResult(outcome: self.outcome)
     }
 
-    func restoreActionResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult> {
+    func restoreActionResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult?> {
         let payload = try self.restore(slot: slot)
         try self.throwPostWriteErrorIfNeeded()
         return DesktopActionResult(payload: payload, outcome: self.outcome)

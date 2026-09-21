@@ -1135,7 +1135,7 @@ private final class TransactionGateClipboardService: ClipboardServiceProtocol {
         self.afterSave?()
     }
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         self.restoreCallCount += 1
         if let restoreError {
             throw restoreError

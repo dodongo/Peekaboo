@@ -304,7 +304,7 @@ private final class RecordingClipboardService: ClipboardServiceProtocol {
         throw ClipboardServiceError.writeFailed("Not implemented in test stub.")
     }
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         throw ClipboardServiceError.writeFailed("Not implemented in test stub.")
     }
 }
