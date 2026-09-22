@@ -205,6 +205,31 @@ struct AXDescriptorReaderPolicyTests {
             values: values) == .values)
     }
 
+    @Test
+    func `Scoped observations retain offscreen rows without changing action resolution`() {
+        for role in ["AXRow", "AXStaticText"] {
+            let reads = Self.requiredDescriptorReads(
+                size: .zero, role: role, identifier: "sidebar.sound", value: "Sound")
+            let copy: (String) -> AXDescriptorReader.SingleAttributeRead = { name in
+                reads[name] ?? .init(error: .noValue, value: nil)
+            }
+            let result = AXDescriptorReader.describeWithSingleAttributeReads(
+                includeZeroSizedRows: true, copyAttribute: copy)
+            guard case let .descriptor(descriptor) = result else {
+                Issue.record("Expected offscreen sidebar evidence")
+                continue
+            }
+            #expect(descriptor.frame.size == .zero)
+            #expect(descriptor.identifier == "sidebar.sound")
+            #expect(descriptor.value == "Sound")
+            #expect(AXDescriptorReader.describeWithSingleAttributeReads(copyAttribute: copy) == .absent)
+        }
+        let button = Self.requiredDescriptorReads(size: .zero)
+        #expect(AXDescriptorReader.describeWithSingleAttributeReads(includeZeroSizedRows: true) { name in
+            button[name] ?? .init(error: .noValue, value: nil)
+        } == .absent)
+    }
+
     private static func requiredDescriptorReads(
         size: CGSize = CGSize(width: 100, height: 40),
         role: String = "AXButton",
