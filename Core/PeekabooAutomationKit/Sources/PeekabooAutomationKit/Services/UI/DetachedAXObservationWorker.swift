@@ -651,8 +651,13 @@ enum DetachedAXObservationWorker {
         let frame = CGRect(
             origin: self.pointValue(byName[kAXPositionAttribute]) ?? .zero,
             size: self.sizeValue(byName[kAXSizeAttribute]) ?? .zero)
-        guard frame.width > 5, frame.height > 5 else { return .absent }
         let role = self.stringValue(byName[kAXRoleAttribute]) ?? "Unknown"
+        guard AXDescriptorReader.retainsFrame(
+            position: self.pointValue(byName[kAXPositionAttribute]),
+            size: self.sizeValue(byName[kAXSizeAttribute]),
+            role: role,
+            includeZeroSizedRows: true)
+        else { return .absent }
         return .value(Descriptor(
             frame: frame,
             role: role,
@@ -687,8 +692,13 @@ enum DetachedAXObservationWorker {
         let frame = CGRect(
             origin: self.pointValue(valuesByName[kAXPositionAttribute]) ?? .zero,
             size: self.sizeValue(valuesByName[kAXSizeAttribute]) ?? .zero)
-        guard frame.width > 5, frame.height > 5 else { return .absent }
         let role = self.stringValue(valuesByName[kAXRoleAttribute]) ?? "Unknown"
+        guard AXDescriptorReader.retainsFrame(
+            position: self.pointValue(valuesByName[kAXPositionAttribute]),
+            size: self.sizeValue(valuesByName[kAXSizeAttribute]),
+            role: role,
+            includeZeroSizedRows: true)
+        else { return .absent }
         return .value(Descriptor(
             frame: frame,
             role: role,

@@ -69,7 +69,9 @@ struct AXTreeCollector {
     private let childrenReader: @MainActor (Element) -> [Element]
 
     init(
-        descriptorReader: @escaping @MainActor (Element) -> AXDescriptorReader.ReadResult = AXDescriptorReader.read,
+        descriptorReader: @escaping @MainActor (Element) -> AXDescriptorReader.ReadResult = {
+            AXDescriptorReader.read($0, includeZeroSizedRows: true)
+        },
         childrenReader: @escaping @MainActor (Element) -> [Element] = { $0.children() ?? [] })
     {
         self.descriptorReader = descriptorReader

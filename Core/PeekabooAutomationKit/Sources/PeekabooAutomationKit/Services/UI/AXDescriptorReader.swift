@@ -155,23 +155,26 @@ import CoreGraphics
     }
 
     @MainActor
-    static func read(_ element: Element) -> ReadResult {
+    static func read(_ element: Element, includeZeroSizedRows: Bool = false) -> ReadResult {
         let attributes: AttributeValues
         switch self.copyAttributes(for: element) {
         case let .values(values):
             attributes = values
         case .fallbackRequired:
-            return self.describeWithSingleAttributeReads(element)
+            return self.describeWithSingleAttributeReads(element, includeZeroSizedRows: includeZeroSizedRows)
         case .failed:
             return .incomplete
         }
 
-        return self.readResult(from: attributes)
+        return self.readResult(from: attributes, includeZeroSizedRows: includeZeroSizedRows)
     }
 
     @MainActor
-    private static func describeWithSingleAttributeReads(_ element: Element) -> ReadResult {
-        self.describeWithSingleAttributeReads { name in
+    private static func describeWithSingleAttributeReads(
+        _ element: Element,
+        includeZeroSizedRows: Bool) -> ReadResult
+    {
+        self.describeWithSingleAttributeReads(includeZeroSizedRows: includeZeroSizedRows) { name in
             var value: CFTypeRef?
             let error = AXUIElementCopyAttributeValue(
                 element.underlyingElement,
@@ -182,6 +185,7 @@ import CoreGraphics
     }
 
     static func describeWithSingleAttributeReads(
+        includeZeroSizedRows: Bool = false,
         copyAttribute: (String) -> SingleAttributeRead) -> ReadResult
     {
         var valueByName: [String: Any] = [:]
@@ -201,7 +205,9 @@ import CoreGraphics
                 return .incomplete
             }
         }
-        return self.readResult(from: self.attributeValues(from: valueByName))
+        return self.readResult(
+            from: self.attributeValues(from: valueByName),
+            includeZeroSizedRows: includeZeroSizedRows)
     }
 
     @MainActor
@@ -250,9 +256,17 @@ import CoreGraphics
             placeholder: self.stringValue(valueByName[AttributeName.placeholderValue]))
     }
 
-    private static func readResult(from attributes: AttributeValues) -> ReadResult {
+    private static func readResult(
+        from attributes: AttributeValues,
+        includeZeroSizedRows: Bool) -> ReadResult
+    {
         let frame = CGRect(origin: attributes.position ?? .zero, size: attributes.size ?? .zero)
-        guard self.isUsefulFrame(frame) else { return .absent }
+        guard self.retainsFrame(
+            position: attributes.position,
+            size: attributes.size,
+            role: attributes.role,
+            includeZeroSizedRows: includeZeroSizedRows)
+        else { return .absent }
 
         return .descriptor(Descriptor(
             frame: frame,
@@ -389,8 +403,17 @@ import CoreGraphics
         return unsafeDowncast(cfValue, to: AXValue.self)
     }
 
-    private static func isUsefulFrame(_ frame: CGRect) -> Bool {
-        frame.width > 5 && frame.height > 5
+    static func retainsFrame(
+        position: CGPoint?, size: CGSize?, role: String?, includeZeroSizedRows: Bool = false) -> Bool
+    {
+        if let size, size.width > 5, size.height > 5 {
+            return true
+        }
+        // Virtualized lists retain semantic labels with explicit zero-sized frames.
+        // Only scoped observation opts in; action resolution keeps its normal frame checks.
+        return includeZeroSizedRows && size == .zero && position != nil &&
+            position?.x.isFinite == true && position?.y.isFinite == true &&
+            (role == "AXRow" || role == "AXStaticText")
     }
 }
 
