@@ -20,6 +20,8 @@ struct ExactWindowFocusSnapshot: Sendable, Equatable {
     let title: String?
     let identifier: String?
     let value: String?
+    /// UTF-16 selection within `value`, read with it; an empty range is the insertion point.
+    let selectedTextRange: NSRange?
     let nativeElement: RetainedFocusElement?
 
     init(
@@ -31,6 +33,7 @@ struct ExactWindowFocusSnapshot: Sendable, Equatable {
         title: String? = nil,
         identifier: String? = nil,
         value: String? = nil,
+        selectedTextRange: NSRange? = nil,
         nativeElement: RetainedFocusElement? = nil)
     {
         self.processIdentifier = processIdentifier
@@ -41,6 +44,7 @@ struct ExactWindowFocusSnapshot: Sendable, Equatable {
         self.title = title
         self.identifier = identifier
         self.value = value
+        self.selectedTextRange = selectedTextRange
         self.nativeElement = nativeElement
     }
 }
@@ -207,6 +211,7 @@ enum DetachedExactWindowFocusReader {
         }
 
         let subrole = self.stringAttribute(kAXSubroleAttribute as String, of: element)
+        let readsValue = includesValue && self.allowsValueRead(role: expected.role, subrole: subrole)
         return .success(ExactWindowFocusSnapshot(
             processIdentifier: expected.processIdentifier,
             windowID: expected.windowID,
@@ -215,9 +220,8 @@ enum DetachedExactWindowFocusReader {
             subrole: subrole,
             title: self.stringAttribute(kAXTitleAttribute as String, of: element),
             identifier: self.stringAttribute(kAXIdentifierAttribute as String, of: element),
-            value: includesValue && self.allowsValueRead(role: expected.role, subrole: subrole)
-                ? self.stringAttribute(kAXValueAttribute as String, of: element)
-                : nil,
+            value: readsValue ? self.stringAttribute(kAXValueAttribute as String, of: element) : nil,
+            selectedTextRange: readsValue ? self.rangeAttribute(kAXSelectedTextRangeAttribute, of: element) : nil,
             nativeElement: RetainedFocusElement(element: element)))
     }
 
@@ -311,6 +315,22 @@ enum DetachedExactWindowFocusReader {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
         return value as? String
+    }
+
+    private static func rangeAttribute(_ name: String, of element: AXUIElement) -> NSRange? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXValueGetTypeID()
+        else { return nil }
+        let axValue = unsafeDowncast(value, to: AXValue.self)
+        var range = CFRange()
+        guard AXValueGetType(axValue) == .cfRange,
+              AXValueGetValue(axValue, .cfRange, &range),
+              range.location >= 0,
+              range.length >= 0
+        else { return nil }
+        return NSRange(location: range.location, length: range.length)
     }
 
     private static func boolAttribute(_ name: String, of element: AXUIElement) -> Bool? {

@@ -90,6 +90,37 @@ struct FocusRemoteHostTests {
     }
 
     @Test
+    func `remote broad selection skips windows without an Accessibility match`() async throws {
+        let strayBounds = CGRect(x: 0, y: 617, width: 500, height: 500)
+        let stray = ServiceWindowInfo(
+            windowID: 76,
+            title: "",
+            bounds: strayBounds,
+            observationCapability: .pixelsOnly(reason: .noMatchingAccessibilityWindow),
+            mutationIdentity: .init(
+                windowID: 76,
+                ownerProcessIdentifier: Self.application.processIdentifier,
+                ownerProcessStartIdentity: 9001,
+                capturedBounds: strayBounds
+            )
+        )
+        let windows = RemoteFocusWindowService(windowsByApp: ["Safari": [stray, Self.window]])
+        let services = RemoteFocusTestServices(base: TestServicesFactory.makePeekabooServices(
+            applications: StubApplicationService(applications: [Self.application]),
+            windows: windows
+        ))
+
+        let result = try await ensureFocused(
+            applicationName: "Safari",
+            options: Self.options,
+            services: services
+        )
+
+        #expect(windows.pinnedFocusCalls.map(\.target.description) == ["windowId(77)"])
+        #expect(result.targetIdentity?.exactWindow?.identity.windowID == 77)
+    }
+
+    @Test
     func `window focus command refuses app and window ID owned by different processes`() async throws {
         let otherWindow = Self.window(
             id: 88,

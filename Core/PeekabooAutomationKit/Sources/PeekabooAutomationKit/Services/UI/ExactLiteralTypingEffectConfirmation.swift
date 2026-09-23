@@ -33,12 +33,31 @@ struct ExactLiteralTypingEffectConfirmationTiming: Sendable {
     }
 }
 
-/// Internal postcondition for the one exact typing shape whose final value is deterministic.
-/// Text values stay inside the operation lane and are never added to public results or logs.
+/// Internal postcondition for literal typing whose final value is deterministic. The typed text
+/// replaces the whole value after a clear, or else the selection read with the baseline value; an
+/// empty selection is the insertion point. Return and Tab count as literal line breaks and tabs in
+/// any role; a field that submits or moves focus instead simply never reads back the expected
+/// value. Text values stay inside the operation lane and are never added to public results or logs.
 struct ExactLiteralTypingEffectConfirmation {
+    /// Focused value and selection read before typing.
+    struct Baseline: Sendable, Equatable, ExpressibleByStringLiteral {
+        let value: String
+        let selectedTextRange: NSRange?
+
+        init(value: String, selectedTextRange: NSRange? = nil) {
+            self.value = value
+            self.selectedTextRange = selectedTextRange
+        }
+
+        init(stringLiteral value: String) {
+            self.init(value: value)
+        }
+    }
+
     let focusedElement: FocusedElementIdentity
     let processStartIdentity: UInt64
-    private let expectedValue: String
+    private let literal: String
+    private let clearsFirst: Bool
 
     static func plan(
         actions: [TypeAction],
@@ -46,52 +65,79 @@ struct ExactLiteralTypingEffectConfirmation {
     {
         guard let focusedElement = target.focusedElement,
               focusedElement.role != "AXSecureTextField",
-              let firstAction = actions.first,
-              case .clear = firstAction
+              let firstAction = actions.first
         else { return nil }
 
-        var expectedValue = ""
-        for action in actions.dropFirst() {
-            guard case let .text(text) = action,
-                  text.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
-            else { return nil }
-            expectedValue += text
+        let clearsFirst = firstAction.isClear
+        let literalActions = clearsFirst ? Array(actions.dropFirst()) : actions
+        guard clearsFirst || !literalActions.isEmpty else { return nil }
+        var literal = ""
+        for action in literalActions {
+            switch action {
+            case let .text(text):
+                guard text.unicodeScalars.allSatisfy({
+                    !CharacterSet.controlCharacters.contains($0) || $0 == "\n" || $0 == "\t"
+                }) else { return nil }
+                literal += text
+            case .key(.return):
+                literal += "\n"
+            case .key(.tab):
+                literal += "\t"
+            default:
+                return nil
+            }
         }
         return Self(
             focusedElement: focusedElement,
             processStartIdentity: target.identity.ownerProcessStartIdentity,
-            expectedValue: expectedValue)
+            literal: literal,
+            clearsFirst: clearsFirst)
     }
 
     func readableValue(
         from observation: Result<ExactWindowFocusSnapshot, FocusedElementReceiptError>) -> String?
     {
+        self.readableBaseline(from: observation)?.value
+    }
+
+    func readableBaseline(
+        from observation: Result<ExactWindowFocusSnapshot, FocusedElementReceiptError>) -> Baseline?
+    {
         guard case let .success(snapshot) = observation,
               snapshot.role != "AXSecureTextField",
-              snapshot.subrole != "AXSecureTextField"
+              snapshot.subrole != "AXSecureTextField",
+              let value = snapshot.value
         else { return nil }
-        return snapshot.value
+        return Baseline(value: value, selectedTextRange: snapshot.selectedTextRange)
+    }
+
+    /// The value typing must produce from `baseline`, or nil when the insertion point is unknown.
+    func expectedValue(after baseline: Baseline) -> String? {
+        if self.clearsFirst || baseline.value.isEmpty {
+            return self.literal
+        }
+        guard let selection = baseline.selectedTextRange,
+              let range = Range(selection, in: baseline.value)
+        else { return nil }
+        return baseline.value.replacingCharacters(in: range, with: self.literal)
     }
 
     func confirmedOutcome(
         from outcome: DesktopActionOutcome,
-        previousValue: String,
+        previousValue: Baseline,
         observedValue: String) -> DesktopActionOutcome
     {
         guard let delivery = outcome.delivery,
               outcome.state == .dispatchedUnverified,
               Self.supportsExactBackgroundDelivery(delivery),
-              !previousValue.utf8.elementsEqual(self.expectedValue.utf8),
-              observedValue.utf8.elementsEqual(self.expectedValue.utf8)
+              let expectedValue = self.expectedValue(after: previousValue),
+              !previousValue.value.utf8.elementsEqual(expectedValue.utf8),
+              observedValue.utf8.elementsEqual(expectedValue.utf8)
         else { return outcome }
         return .confirmedChange(
             route: outcome.route,
             delivery: delivery,
             unitCount: outcome.dispatchState.unitCount)
-    }
-
-    func expectedValueMatches(_ value: String) -> Bool {
-        value.utf8.elementsEqual(self.expectedValue.utf8)
     }
 
     private static func supportsExactBackgroundDelivery(_ delivery: DesktopActionOutcome.Delivery) -> Bool {
