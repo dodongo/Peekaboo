@@ -1,4 +1,5 @@
 import PeekabooAutomationKitTestSupport
+import PeekabooFoundation
 import Testing
 @testable import PeekabooBridge
 
@@ -199,5 +200,30 @@ struct PeekabooBridgeRequestPlanTests {
         #expect(plan.descriptor.lane.readPolicy == .globalExclusive)
         #expect(plan.descriptor.typedResponse == .noSuccessResponse)
         #expect(plan.descriptor.requiredPermissions.isEmpty)
+    }
+
+    @Test
+    func `exact window typing accepts confirmed change for every literal the effect plan confirms`() {
+        let confirmable: [[TypeAction]] = [
+            [.text("hello")],
+            [.text("hello\nworld\tend")],
+            [.text("a"), .key(.return), .text("b"), .key(.tab)],
+            [.clear],
+            [.clear, .text("x\ny")],
+        ]
+        for actions in confirmable {
+            #expect(Semantics.TypeActionResultRule(actions: actions, allowsConfirmedChange: true).allowsConfirmedChange)
+            #expect(!Semantics.TypeActionResultRule(actions: actions).allowsConfirmedChange)
+        }
+        let unconfirmable: [[TypeAction]] = [
+            [],
+            [.key(.escape)],
+            [.text("a"), .key(.delete)],
+            [.text("a\u{1B}")],
+            [.text("a"), .clear],
+        ]
+        for actions in unconfirmable {
+            #expect(!Semantics.TypeActionResultRule(actions: actions, allowsConfirmedChange: true).allowsConfirmedChange)
+        }
     }
 }

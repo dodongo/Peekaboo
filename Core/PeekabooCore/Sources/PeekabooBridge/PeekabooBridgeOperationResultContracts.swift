@@ -246,7 +246,7 @@ enum PeekabooBridgeOperationResultSemantics {
             self.noChangeCapableAccessibilityKeys = noChangeCapableAccessibilityKeys
             self.flexibleClearCount = flexibleClearCount
             self.additionalAccessibilityUnits = additionalUsesAccessibilityValue ? additionalDispatchUnits : 0
-            self.allowsConfirmedChange = allowsConfirmedChange && Self.isDeterministicClearLiteral(actions)
+            self.allowsConfirmedChange = allowsConfirmedChange && Self.isConfirmableLiteral(actions)
             precondition(additionalUsesAccessibilityValue || additionalDispatchUnits == 0)
         }
 
@@ -405,11 +405,24 @@ enum PeekabooBridgeOperationResultSemantics {
             }
         }
 
-        private static func isDeterministicClearLiteral(_ actions: [TypeAction]) -> Bool {
-            guard let first = actions.first, case .clear = first else { return false }
-            return actions.dropFirst().allSatisfy { action in
-                guard case let .text(text) = action else { return false }
-                return text.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
+        /// Mirrors `ExactLiteralTypingEffectConfirmation.plan`: an optional leading clear, then
+        /// literal text where Return and Tab are the only control characters.
+        private static func isConfirmableLiteral(_ actions: [TypeAction]) -> Bool {
+            guard let first = actions.first else { return false }
+            let clearsFirst = if case .clear = first { true } else { false }
+            let literal = clearsFirst ? actions.dropFirst() : actions[...]
+            guard clearsFirst || !literal.isEmpty else { return false }
+            return literal.allSatisfy { action in
+                switch action {
+                case let .text(text):
+                    text.unicodeScalars.allSatisfy {
+                        !CharacterSet.controlCharacters.contains($0) || $0 == "\n" || $0 == "\t"
+                    }
+                case .key(.return), .key(.tab):
+                    true
+                default:
+                    false
+                }
             }
         }
     }
