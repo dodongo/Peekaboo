@@ -1110,7 +1110,7 @@ public final class FocusManagementService {
                 for: runningApp,
                 timeout: min(0.1, remainingTimeout))
             let focusedWindowID = focusedWindow.flatMap {
-                self.windowIdentityService.getWindowID(
+                self.windowIdentityService.focusedWindowID(
                     from: $0,
                     messagingTimeout: Float(min(0.1, remainingTimeout)))
             }
