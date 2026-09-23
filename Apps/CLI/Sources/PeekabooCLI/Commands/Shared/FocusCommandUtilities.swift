@@ -164,7 +164,9 @@ private func prepareFocusSelection(
             hint: "Use a more specific title or select the window by ID after refreshing the window inventory."
         )
     }
-    guard let selected = matches.first,
+    // Focus resolves an Accessibility window, so rows without one (stray utility surfaces,
+    // attached sheets) cannot be focus targets.
+    guard let selected = matches.first(where: { $0.observationCapability?.mode != .pixelsOnly }),
           let identity = selected.mutationIdentity,
           identity.windowID == selected.windowID,
           let bounds = identity.capturedBounds,

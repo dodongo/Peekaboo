@@ -450,7 +450,7 @@ public final class TypeService {
         let effectConfirmation = automationTarget.exactWindow.flatMap {
             ExactLiteralTypingEffectConfirmation.plan(actions: actions, target: $0)
         }
-        var confirmationPreflightValue: String?
+        var confirmationPreflightValue: ExactLiteralTypingEffectConfirmation.Baseline?
         let plan = try DesktopOperationPlan(
             verb: .type,
             selector: .focused,
@@ -1271,16 +1271,28 @@ extension TypeService {
 
     func prepareEffectConfirmationBaseline(
         _ confirmation: ExactLiteralTypingEffectConfirmation?,
-        lanePreparation: @escaping @MainActor () async -> Void) async -> String?
+        lanePreparation: @escaping @MainActor () async -> Void) async
+        -> ExactLiteralTypingEffectConfirmation.Baseline?
     {
         await lanePreparation()
-        guard let confirmation else { return nil }
-        return await self.exactFocusedValue(for: confirmation)
+        guard let confirmation,
+              let observation = await self.exactFocusedObservation(for: confirmation)
+        else { return nil }
+        return confirmation.readableBaseline(from: observation)
     }
 
     func exactFocusedValue(
         for confirmation: ExactLiteralTypingEffectConfirmation,
         timeout: Duration = .milliseconds(200)) async -> String?
+    {
+        await self.exactFocusedObservation(for: confirmation, timeout: timeout)
+            .flatMap(confirmation.readableValue(from:))
+    }
+
+    private func exactFocusedObservation(
+        for confirmation: ExactLiteralTypingEffectConfirmation,
+        timeout: Duration = .milliseconds(200)) async
+        -> Result<ExactWindowFocusSnapshot, FocusedElementReceiptError>?
     {
         guard timeout > .zero else { return nil }
         let reader = self.exactFocusedElementValueReader
@@ -1301,17 +1313,18 @@ extension TypeService {
             }
             return observation
         }
-        return observation.flatMap(confirmation.readableValue(from:))
+        return observation
     }
 
     private func confirmExactLiteralTypingEffect(
         from outcome: DesktopActionOutcome,
         confirmation: ExactLiteralTypingEffectConfirmation?,
-        preflightValue: String?) async -> DesktopActionOutcome
+        preflightValue: ExactLiteralTypingEffectConfirmation.Baseline?) async -> DesktopActionOutcome
     {
         guard let confirmation,
               let preflightValue,
-              !confirmation.expectedValueMatches(preflightValue)
+              let expectedValue = confirmation.expectedValue(after: preflightValue),
+              !preflightValue.value.utf8.elementsEqual(expectedValue.utf8)
         else { return outcome }
         let timing = self.effectConfirmationTiming
         let deadline = timing.now().advanced(by: timing.timeout)
@@ -1326,7 +1339,7 @@ extension TypeService {
                 timeout: sampleTimeout),
                 !Task.isCancelled
             else { return outcome }
-            if confirmation.expectedValueMatches(observedValue) {
+            if observedValue.utf8.elementsEqual(expectedValue.utf8) {
                 return confirmation.confirmedOutcome(
                     from: outcome,
                     previousValue: preflightValue,
