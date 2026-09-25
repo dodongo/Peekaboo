@@ -26,12 +26,18 @@ try {
   });
   const browser = await ensureBrowserConnected({ wsEndpoint: fixture.endpoint });
   assert.equal(await browser.version(), 'Chrome/152.0');
+  const probes = fixture.commands.filter(command => command === 'Browser.getVersion').length;
   assert.deepEqual(await tool.handler({}), result);
+  assert.equal(fixture.commands.filter(command => command === 'Browser.getVersion').length, probes + 1,
+    'each verification must probe the live connection, not return a cached success');
   assert.equal(fixture.attaches, 1, 'verification and ordinary provider operations must share one socket');
   assert.equal(fixture.requests, 0, 'approval-mode discovery must not require /json/version');
   const disconnected = once(browser, 'disconnected');
   fixture.drop();
   await disconnected;
+  const stale = await tool.handler({});
+  assert.equal(stale.isError, true, 'verification must reject a dropped socket even while the provider lives');
+  assert.match(stale.content[0].text, /disconnected/);
   await assert.rejects(ensureBrowserConnected({ wsEndpoint: fixture.endpoint }), /reconnect explicitly/);
   assert.equal(fixture.attaches, 1, 'a disconnected provider must not ask Chrome for another approval');
 } finally {

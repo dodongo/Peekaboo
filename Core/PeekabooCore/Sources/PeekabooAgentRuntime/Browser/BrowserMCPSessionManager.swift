@@ -20,7 +20,9 @@ protocol BrowserMCPManaging: AnyObject {
 }
 
 extension BrowserMCPManaging {
-    func serverProviderFeatures(name _: String) async -> [String]? { nil }
+    func serverProviderFeatures(name _: String) async -> [String]? {
+        nil
+    }
 }
 
 extension TachikomaMCPClientManager: BrowserMCPManaging {
@@ -238,6 +240,11 @@ final class BrowserMCPSessionManager: @unchecked Sendable {
             try await self.validate(receipt)
             guard await self.manager.isServerConnected(name: self.serverName) else {
                 throw BrowserMCPConnectionError.connectionLost("the persistent MCP child is no longer connected")
+            }
+            if let endpoint = receipt.webSocketDebuggerURL {
+                _ = try await self.manager.verifyBrowserConnection(
+                    serverName: self.serverName,
+                    endpoint: endpoint)
             }
             return await BrowserMCPStatusInspection(
                 status: BrowserMCPStatus(

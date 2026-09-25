@@ -29,22 +29,25 @@ struct BrowserMCPSingleConnectionTests {
         let config = try #require(provider.configs.first)
         #expect(config.args.contains("--wsEndpoint=\(endpoint.webSocketDebuggerURL)"))
         #expect(!config.args.contains { $0.hasPrefix("--browserUrl") })
-        #expect(provider.calls == ["peekaboo_browser_connect", "list_pages"])
+        #expect(provider.calls == ["peekaboo_browser_connect", "list_pages", "peekaboo_browser_connect"])
         await session.disconnect()
     }
 
     @Test
-    func `native connect verifies provider once then reuses it for page work`() async throws {
+    func `native connect checks live provider while reusing its socket for page work`() async throws {
         let provider = SingleConnectionProvider()
         let session = Self.session(provider)
         let result = try await session.connect(channel: .stable)
         #expect(result.isConnected)
         #expect(result.connectionReceipt?.browserVersion == "Chrome/152.0")
         #expect(result.connectionReceipt?.protocolVersion == "1.3")
-        #expect(provider.calls == ["peekaboo_browser_connect", "list_pages"])
+        #expect(provider.calls == ["peekaboo_browser_connect", "list_pages", "peekaboo_browser_connect"])
         _ = try await session.connect(channel: .stable)
         _ = try await session.execute(toolName: "take_snapshot", arguments: [:], channel: .stable)
-        #expect(provider.calls == ["peekaboo_browser_connect", "list_pages", "take_snapshot"])
+        #expect(provider.calls == [
+            "peekaboo_browser_connect", "list_pages", "peekaboo_browser_connect",
+            "peekaboo_browser_connect", "take_snapshot",
+        ])
         #expect(provider.starts == 1)
         await session.disconnect()
         #expect(!provider.connected)
@@ -80,6 +83,38 @@ struct BrowserMCPSingleConnectionTests {
         #expect(provider.starts == 1)
         #expect(!provider.connected)
         #expect(await session.status(channel: .stable).connectionReceipt == nil)
+    }
+
+    @Test
+    func `status clears a dead Chrome socket even when the provider process lives`() async throws {
+        let provider = SingleConnectionProvider()
+        let session = Self.session(provider)
+        _ = try await session.connect(channel: .stable)
+        provider.refuse = true
+        #expect(provider.connected)
+
+        let status = await session.status(channel: .stable)
+        #expect(!status.isConnected)
+        #expect(status.connectionReceipt == nil)
+        #expect(status.error != nil)
+        #expect(!provider.connected)
+        #expect(provider.starts == 1)
+    }
+
+    @Test
+    func `connect rejects stale success and permits a subsequent explicit attachment`() async throws {
+        let provider = SingleConnectionProvider()
+        let session = Self.session(provider)
+        _ = try await session.connect(channel: .stable)
+        provider.refuse = true
+        await #expect(throws: (any Error).self) { _ = try await session.connect(channel: .stable) }
+        #expect(!provider.connected)
+        #expect(provider.starts == 1)
+
+        provider.refuse = false
+        #expect(try await session.connect(channel: .stable).isConnected)
+        #expect(provider.starts == 2)
+        await session.disconnect()
     }
 
     private static func session(
@@ -139,7 +174,9 @@ private final class SingleConnectionProvider: BrowserMCPManaging {
         self.connected
     }
 
-    func serverProviderFeatures(name _: String) async -> [String]? { ["locator:fill"] }
+    func serverProviderFeatures(name _: String) async -> [String]? {
+        ["locator:fill"]
+    }
 
     func serverToolCount(name _: String) async -> Int {
         self.connected ? 30 : 0

@@ -67,7 +67,7 @@ struct BrowserMCPSessionManagerAuthorityValidationTests {
     }
 
     @Test
-    func `one native resolution and one provider verification while later checks are authority only`() async throws {
+    func `one native resolution while later status checks verify the live provider`() async throws {
         let manager = AuthorityBrowserMCPManager()
         let initialResolutions = AuthorityCounter()
         let revalidations = AuthorityCounter()
@@ -97,7 +97,7 @@ struct BrowserMCPSessionManagerAuthorityValidationTests {
         #expect(initialResolutions.value == 1)
         #expect(revalidations.value >= 5)
         #expect(manager.addServerCount == 1)
-        #expect(manager.versionVerificationCount == 1)
+        #expect(manager.versionVerificationCount == 5)
         #expect(manager.executedTools == ["list_pages", "take_snapshot"])
     }
 
