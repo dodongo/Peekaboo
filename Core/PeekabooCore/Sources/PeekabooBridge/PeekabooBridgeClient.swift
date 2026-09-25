@@ -781,9 +781,12 @@ public actor PeekabooBridgeClient {
                   socketPath: self.socketPath,
                   localSigningTrust: self.usesDefaultHostTrust ? self.hostAuthentication.localSigningTrust() : nil)
         else {
-            throw PeekabooBridgeErrorEnvelope(
+            var error = PeekabooBridgeErrorEnvelope(
                 code: .unauthorizedClient,
-                message: "Bridge handshake did not come from a trusted connected host")
+                message: "Bridge handshake did not come from a trusted connected host",
+                context: "connectedHostAuthentication")
+            error.isLocalHostAuthenticationFailure = true
+            throw error
         }
     }
 
