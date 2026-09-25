@@ -15,6 +15,13 @@ exit 90
 EOF
   chmod 755 "$TEST_DIR/forbidden-tools/$tool"
 done
+cat > "$TEST_DIR/forbidden-tools/git" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+export DEVELOPER_DIR="${FIXTURE_DEVELOPER_DIR:?}"
+exec /usr/bin/git "$@"
+EOF
+chmod 755 "$TEST_DIR/forbidden-tools/git"
 export PATH="$TEST_DIR/forbidden-tools:$PATH"
 cat > "$TEST_DIR/codesign-verifier" <<'EOF'
 #!/bin/bash
