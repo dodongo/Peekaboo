@@ -159,10 +159,12 @@ enum BrowserMCPProviderBootstrap {
         server.server.registerTool('peekaboo_browser_connect', {
           description: 'Verify the exact persistent browser connection for the Peekaboo owner.',
           inputSchema: {},
-        }, () => {
+        }, async () => {
           // Cache failure too: no tool invocation may silently reopen Chrome's approval UI.
-          connection ??= (async () => {
-            const browser = await ensureBrowserConnected({wsEndpoint: args.wsEndpoint});
+          connection ??= ensureBrowserConnected({wsEndpoint: args.wsEndpoint});
+          try {
+            const browser = await connection;
+            if (!browser.connected) throw new Error('Chrome disconnected; reconnect explicitly');
             const session = await browser.target().createCDPSession();
             try {
               const version = await session.send('Browser.getVersion');
@@ -172,10 +174,11 @@ enum BrowserMCPProviderBootstrap {
             } finally {
               await session.detach();
             }
-          })().catch(error => ({isError: true, content: [{type: 'text',
-            text: 'Chrome connection failed: ' + String(error.cause?.message ?? error.message).slice(0, 512),
-          }]}));
-          return connection;
+          } catch (error) {
+            return {isError: true, content: [{type: 'text',
+              text: 'Chrome connection failed: ' + String(error.cause?.message ?? error.message).slice(0, 512),
+            }]};
+          }
         });
       }
       return server;
