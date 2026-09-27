@@ -18,7 +18,8 @@ public struct WindowIdentityInfo: Sendable {
     public let axIdentifier: String?
 
     public var isRenderable: Bool {
-        self.layer == 0 && self.bounds.width >= 50 && self.bounds.height >= 50 && self.alpha > 0
+        WindowFiltering.supportsLayer(self.layer) && self.bounds.width >= 50 && self.bounds.height >= 50 && self
+            .alpha > 0
     }
 
     public var windowLayer: Int {
@@ -30,7 +31,7 @@ public struct WindowIdentityInfo: Sendable {
     }
 
     public var isDialog: Bool {
-        self.layer >= 10 && self.layer < 1000
+        self.layer == Int(CGWindowLevelForKey(.modalPanelWindow)) || (self.layer >= 10 && self.layer < 1000)
     }
 
     public init(
@@ -294,7 +295,7 @@ public final class WindowIdentityService {
         let layer = Self.intValue(window[kCGWindowLayer as String]) ?? 0
         let alpha = Self.cgFloatValue(window[kCGWindowAlpha as String]) ?? 1.0
         let bounds = Self.bounds(from: window)
-        return layer == 0 && bounds.width >= 50 && bounds.height >= 50 && alpha > 0
+        return WindowFiltering.supportsLayer(layer) && bounds.width >= 50 && bounds.height >= 50 && alpha > 0
     }
 
     private nonisolated static func windowID(from window: [String: Any]) -> CGWindowID? {

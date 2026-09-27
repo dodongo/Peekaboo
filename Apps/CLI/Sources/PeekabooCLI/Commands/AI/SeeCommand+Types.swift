@@ -242,6 +242,21 @@ struct SeeCommandRenderContext {
         !self.metadata.isApplicationScopedAccessibilityFallback
     }
 
+    var mutationTargetingAvailable: Bool {
+        guard self.snapshotReusable else { return false }
+        let detection = ElementDetectionResult(
+            snapshotId: self.snapshotId,
+            screenshotPath: self.screenshotPath,
+            elements: self.elements,
+            metadata: self.metadata
+        )
+        let plan = try? SnapshotTargetReceiptPlanner.assemble(
+            snapshotID: self.snapshotId,
+            detectionResult: detection
+        )
+        return plan?.receipt.identity?.exactWindow != nil
+    }
+
     var semanticScope: String {
         self.snapshotReusable ? "exact_or_requested" : "application_partial"
     }

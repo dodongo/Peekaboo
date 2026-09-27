@@ -4,6 +4,29 @@ import XCTest
 
 @MainActor
 final class ObservationWindowSelectionTests: XCTestCase {
+    func testUntitledModalPanelRemainsCapturableAndListed() {
+        let dialog = Self.window(
+            id: 170,
+            title: "",
+            bounds: CGRect(x: 626, y: 178, width: 260, height: 234),
+            layer: Int(CGWindowLevelForKey(.modalPanelWindow)))
+
+        XCTAssertEqual(ObservationTargetResolver.captureCandidates(from: [dialog]).map(\.windowID), [170])
+        XCTAssertEqual(ObservationTargetResolver.filteredWindows(from: [dialog], mode: .list).map(\.windowID), [170])
+    }
+
+    func testModalPanelStillRequiresVisibilityAndShareability() {
+        let bounds = CGRect(x: 626, y: 178, width: 260, height: 234)
+        let layer = Int(CGWindowLevelForKey(.modalPanelWindow))
+        let windows = [
+            Self.window(id: 170, title: "", bounds: bounds, isOnScreen: false, layer: layer),
+            Self.window(id: 171, title: "", bounds: bounds, sharingState: .none, layer: layer),
+            Self.window(id: 172, title: "", bounds: bounds, layer: Int(CGWindowLevelForKey(.floatingWindow))),
+        ]
+
+        XCTAssertTrue(ObservationTargetResolver.captureCandidates(from: windows).isEmpty)
+    }
+
     func testCaptureCandidatesDropNonShareableWindows() {
         let windows = [
             Self.window(
@@ -128,7 +151,8 @@ final class ObservationWindowSelectionTests: XCTestCase {
         isMinimized: Bool = false,
         index: Int = 0,
         isOnScreen: Bool = true,
-        sharingState: WindowSharingState = .readOnly) -> ServiceWindowInfo
+        sharingState: WindowSharingState = .readOnly,
+        layer: Int = 0) -> ServiceWindowInfo
     {
         ServiceWindowInfo(
             windowID: id,
@@ -136,10 +160,10 @@ final class ObservationWindowSelectionTests: XCTestCase {
             bounds: bounds,
             isMinimized: isMinimized,
             isMainWindow: false,
-            windowLevel: 0,
+            windowLevel: layer,
             alpha: 1,
             index: index,
-            layer: 0,
+            layer: layer,
             isOnScreen: isOnScreen,
             sharingState: sharingState,
             isExcludedFromWindowsMenu: false)

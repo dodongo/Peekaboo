@@ -10,6 +10,27 @@ import Testing
 @MainActor
 struct WindowIdentityExactWindowLookupTests {
     @Test
+    func `Untitled modal panels retain their WindowServer identity`() throws {
+        let bounds = CGRect(x: 626, y: 178, width: 260, height: 234)
+        var modal = Self.windowDictionary(windowID: 170, ownerPID: 2257, bounds: bounds)
+        modal[kCGWindowLayer as String] = Int(CGWindowLevelForKey(.modalPanelWindow))
+        let catalog = WindowServerCatalogFixture(onScreenWindowIDs: [170], allWindows: [modal])
+        let info = try #require(WindowIdentityService.exactWindowServerInfo(
+            windowID: 170,
+            windowListProvider: catalog.windowList))
+
+        #expect(info.windowID == 170)
+        #expect(info.ownerPID == 2257)
+        #expect(info.bounds == bounds)
+        #expect(info.isRenderable)
+        #expect(info.isDialog)
+        #expect(WindowIdentityService.topmostRenderableWindowID(ownerPID: 2257, in: [modal]) == 170)
+        #expect(WindowIdentityService.topmostRenderableWindowID(ownerPID: 999, in: [modal]) == nil)
+        modal[kCGWindowAlpha as String] = 0
+        #expect(!WindowIdentityService.isRenderableWindow(modal))
+    }
+
+    @Test
     func `Exact window lookup resolves a window optionIncludingWindow omits`() throws {
         let bounds = CGRect(x: 463, y: 187, width: 586, height: 488)
         let catalog = WindowServerCatalogFixture(

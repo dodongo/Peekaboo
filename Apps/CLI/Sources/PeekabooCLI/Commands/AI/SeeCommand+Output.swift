@@ -93,7 +93,7 @@ extension SeeCommand {
     }
 
     private func outputJSONResults(context: SeeCommandRenderContext) throws {
-        let mutationTargetingAvailable = context.snapshotReusable
+        let mutationTargetingAvailable = context.mutationTargetingAvailable
         let uiElements: [UIElementSummary] = context.elements.all.map { element in
             UIElementSummary(
                 id: element.id,
@@ -195,11 +195,14 @@ extension SeeCommand {
         }
         print("🧊 Detection method: \(context.metadata.method)")
         print("📊 UI elements detected: \(context.metadata.elementCount)")
-        let mutationTargetingAvailable = context.snapshotReusable
+        let mutationTargetingAvailable = context.mutationTargetingAvailable
         let interactableCount = mutationTargetingAvailable
             ? context.elements.all.count(where: \.isActionable)
             : 0
         print("⚙️  Interactable elements: \(interactableCount)")
+        if context.snapshotReusable, !mutationTargetingAvailable {
+            print("⚠️  Observation only: no complete exact-window identity for mutation targeting.")
+        }
         if let truncationInfo = context.metadata.truncationInfo, truncationInfo.isTruncated {
             let remediation = truncationInfo.remediationMessage(
                 budget: context.metadata.windowContext?.traversalBudget,

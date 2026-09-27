@@ -2,6 +2,11 @@ import CoreGraphics
 import Foundation
 
 public enum WindowFiltering {
+    static func supportsLayer(_ layer: Int) -> Bool {
+        layer == Int(CGWindowLevelForKey(.normalWindow)) ||
+            layer == Int(CGWindowLevelForKey(.modalPanelWindow))
+    }
+
     public struct Thresholds: Sendable {
         public let minWidth: CGFloat
         public let minHeight: CGFloat
@@ -58,8 +63,8 @@ public enum WindowFiltering {
             return "window minimized"
         }
 
-        if window.layer != 0 {
-            return "layer != 0"
+        if !self.supportsLayer(window.layer) {
+            return "unsupported window layer"
         }
 
         if window.alpha <= thresholds.minAlpha {
