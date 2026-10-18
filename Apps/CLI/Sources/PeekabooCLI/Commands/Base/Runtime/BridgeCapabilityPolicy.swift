@@ -742,6 +742,7 @@ extension BridgeCapabilityPolicy {
         (handshake.hostKind == .onDemand || handshake.hostKind == .gui) &&
             handshake.negotiatedVersion >= PeekabooBridgeConstants.browserConnectionReceiptVersion &&
             handshake.hostCapabilities?.contains(PeekabooBridgeHostCapability.browserConnectionReceipts) == true &&
+            handshake.hostCapabilities?.contains(PeekabooBridgeHostCapability.hostGenerationIdentity) == true &&
             handshake.supportedOperations.contains(.browserStatus) &&
             handshake.supportedOperations.contains(.browserConnect) &&
             handshake.supportedOperations.contains(.browserDisconnect) &&

@@ -4,7 +4,10 @@ import PeekabooFoundation
 
 @MainActor
 extension PeekabooBridgeServer {
-    func validatePeerAuthorization(_ peer: PeekabooBridgePeer?) throws {
+    func validatePeerAuthorization(
+        _ peer: PeekabooBridgePeer?,
+        localSigningTrust: PeekabooBridgeLocalSigningTrust? = .current) throws
+    {
         guard !self.allowlistedTeams.isEmpty || !self.allowlistedBundles.isEmpty else { return }
         guard let peer else {
             throw PeekabooBridgeErrorEnvelope(
@@ -14,7 +17,11 @@ extension PeekabooBridgeServer {
 
         let developerDaemonPeer = self.hostKind == .onDemand &&
             peer.trustMode == .unsignedSameBinaryDeveloperOptIn
-        if !self.allowlistedTeams.isEmpty, !developerDaemonPeer {
+        let localCertificatePeer = peer.liveIdentity != nil && peer.userIdentifier == geteuid() &&
+            peer.teamIdentifier == nil && localSigningTrust?.acceptsClient(
+                bundleIdentifier: peer.bundleIdentifier,
+                certificateSHA256: peer.localCertificateSHA256) == true
+        if !self.allowlistedTeams.isEmpty, !developerDaemonPeer, !localCertificatePeer {
             guard let team = peer.teamIdentifier, self.allowlistedTeams.contains(team) else {
                 let team = peer.teamIdentifier ?? "<unknown>"
                 throw PeekabooBridgeErrorEnvelope(
@@ -32,7 +39,7 @@ extension PeekabooBridgeServer {
             }
         }
 
-        let expectedUID = developerDaemonPeer ? geteuid() : getuid()
+        let expectedUID = developerDaemonPeer || localCertificatePeer ? geteuid() : getuid()
         if let uid = peer.userIdentifier, uid != expectedUID {
             throw PeekabooBridgeErrorEnvelope(
                 code: .unauthorizedClient,

@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 import PeekabooAutomationKit
@@ -21,9 +22,24 @@ private func peekaboo_csops_audittoken(
 enum PeekabooBridgeCodeSignatureIdentity {
     struct ValidatedSigningIdentity: Equatable, Sendable {
         let identifier: String
-        let teamIdentifier: String
+        let teamIdentifier: String?
         let codeDirectoryHash: Data
+        let localCertificateSHA256: String?
+
+        init(
+            identifier: String,
+            teamIdentifier: String?,
+            codeDirectoryHash: Data,
+            localCertificateSHA256: String? = nil)
+        {
+            self.identifier = identifier
+            self.teamIdentifier = teamIdentifier
+            self.codeDirectoryHash = codeDirectoryHash
+            self.localCertificateSHA256 = localCertificateSHA256
+        }
     }
+
+    static let validatedLocalCertificateSHA256Key = "PeekabooBridgeValidatedLocalCertificateSHA256"
 
     typealias AuditTokenCDHashSystemCall = (
         pid_t,
@@ -193,7 +209,7 @@ enum PeekabooBridgeCodeSignatureIdentity {
             .map(self.hexString(for:))
     }
 
-    /// Returns static signature metadata only after binding it to a valid, Apple-anchored live signature and the
+    /// Returns static signature metadata only after binding it to a trusted live signature and the
     /// kernel CDHash on both sides of the lookup.
     ///
     /// Security.framework obtains identifiers and entitlements from the executable on disk. A writable executable path
@@ -205,7 +221,7 @@ enum PeekabooBridgeCodeSignatureIdentity {
         staticSigningInformationProvider: StaticSigningInformationProvider =
             PeekabooBridgeCodeSignatureIdentity.unvalidatedStaticSigningInformation,
         anchoredSignatureValidationProvider: AnchoredSignatureValidationProvider =
-            PeekabooBridgeCodeSignatureIdentity.validatedAppleAnchoredSigningIdentity) -> [String: Any]?
+            PeekabooBridgeCodeSignatureIdentity.validatedSigningIdentity) -> [String: Any]?
     {
         try? self.validatedSigningInformation(
             auditIdentity: auditIdentity,
@@ -220,7 +236,7 @@ enum PeekabooBridgeCodeSignatureIdentity {
         staticSigningInformationProvider: StaticSigningInformationProvider =
             PeekabooBridgeCodeSignatureIdentity.unvalidatedStaticSigningInformation,
         anchoredSignatureValidationProvider: AnchoredSignatureValidationProvider =
-            PeekabooBridgeCodeSignatureIdentity.validatedAppleAnchoredSigningIdentity) throws -> [String: Any]
+            PeekabooBridgeCodeSignatureIdentity.validatedSigningIdentity) throws -> [String: Any]
     {
         guard let liveHashBefore = self.liveCodeSignatureHash(auditIdentity: auditIdentity, systemCall: systemCall)
         else {
@@ -229,12 +245,13 @@ enum PeekabooBridgeCodeSignatureIdentity {
         guard var information = try staticSigningInformationProvider(auditIdentity) else {
             throw SigningValidationFailure.signingInformationUnavailable
         }
+        information.removeValue(forKey: self.validatedLocalCertificateSHA256Key)
         guard let staticHash = information[kSecCodeInfoUnique as String] as? Data,
               staticHash.count == self.codeDirectoryHashByteCount
         else { throw SigningValidationFailure.staticCDHashUnavailable }
-        guard let staticIdentifier = information[kSecCodeInfoIdentifier as String] as? String,
-              let staticTeamIdentifier = information[kSecCodeInfoTeamIdentifier as String] as? String
+        guard let staticIdentifier = information[kSecCodeInfoIdentifier as String] as? String
         else { throw SigningValidationFailure.staticIdentifierOrTeamUnavailable }
+        let staticTeamIdentifier = information[kSecCodeInfoTeamIdentifier as String] as? String
 
         // Keep the second audit-token lookup even when static metadata names a different executable.
         let validatedIdentity = staticHash == liveHashBefore
@@ -249,12 +266,29 @@ enum PeekabooBridgeCodeSignatureIdentity {
         guard validatedIdentity.identifier == staticIdentifier else {
             throw SigningValidationFailure.staticIdentifierMismatch
         }
+        if staticTeamIdentifier == nil, validatedIdentity.localCertificateSHA256 == nil {
+            throw SigningValidationFailure.staticIdentifierOrTeamUnavailable
+        }
         guard validatedIdentity.teamIdentifier == staticTeamIdentifier else {
             throw SigningValidationFailure.staticTeamMismatch
         }
         guard validatedIdentity.codeDirectoryHash == staticHash,
               validatedIdentity.codeDirectoryHash == liveHashAfter
         else { throw SigningValidationFailure.staticCDHashMismatch }
+
+        if let localCertificateSHA256 = validatedIdentity.localCertificateSHA256 {
+            guard validatedIdentity.teamIdentifier == nil,
+                  information[kSecCodeInfoTeamIdentifier as String] == nil,
+                  self.isLocalIdentifier(validatedIdentity.identifier),
+                  let certificate = self.leafCertificateData(information),
+                  self.certificateSHA256(certificate) == localCertificateSHA256
+            else { throw SigningValidationFailure.anchoredValidationUnavailable }
+            information[self.validatedLocalCertificateSHA256Key] = localCertificateSHA256
+        } else {
+            guard let team = validatedIdentity.teamIdentifier, self.isSafeRequirementTeamIdentifier(team) else {
+                throw SigningValidationFailure.staticIdentifierOrTeamUnavailable
+            }
+        }
 
         information[kSecCodeInfoIdentifier as String] = validatedIdentity.identifier
         information[kSecCodeInfoTeamIdentifier as String] = validatedIdentity.teamIdentifier
@@ -342,6 +376,71 @@ enum PeekabooBridgeCodeSignatureIdentity {
             identifier: identifier,
             teamIdentifier: teamIdentifier,
             codeDirectoryHash: staticHash)
+    }
+
+    private static func validatedSigningIdentity(
+        auditIdentity: PeekabooBridgePeerAuditIdentity) throws -> ValidatedSigningIdentity?
+    {
+        let (code, staticCode) = try self.checkedCodePair(attributes: [kSecGuestAttributeAudit: auditIdentity.tokenData])
+        guard let initialInformation = self.signingInformation(staticCode) else {
+            throw SigningValidationFailure.signingInformationUnavailable
+        }
+        if initialInformation[kSecCodeInfoTeamIdentifier as String] != nil {
+            return try self.validatedAppleAnchoredSigningIdentity(auditIdentity: auditIdentity)
+        }
+        guard let policy = PeekabooBridgeLocalSigningTrust.current,
+              let identifier = initialInformation[kSecCodeInfoIdentifier as String] as? String,
+              let certificate = self.leafCertificateData(initialInformation),
+              self.certificateSHA256(certificate) == policy.certificateSHA256,
+              let requirement = self.localCertificateRequirement(identifier: identifier, certificateData: certificate),
+              SecCodeCheckValidity(code, SecCSFlags(), requirement) == errSecSuccess,
+              SecStaticCodeCheckValidity(
+                  staticCode,
+                  SecCSFlags(rawValue: UInt32(kSecCSDoNotValidateResources)),
+                  requirement) == errSecSuccess,
+              let finalInformation = self.signingInformation(staticCode),
+              finalInformation[kSecCodeInfoTeamIdentifier as String] == nil,
+              finalInformation[kSecCodeInfoIdentifier as String] as? String == identifier,
+              self.leafCertificateData(finalInformation) == certificate,
+              let initialHash = initialInformation[kSecCodeInfoUnique as String] as? Data,
+              let finalHash = finalInformation[kSecCodeInfoUnique as String] as? Data,
+              initialHash == finalHash,
+              finalHash.count == self.codeDirectoryHashByteCount
+        else { return nil }
+        return ValidatedSigningIdentity(
+            identifier: identifier,
+            teamIdentifier: nil,
+            codeDirectoryHash: finalHash,
+            localCertificateSHA256: policy.certificateSHA256)
+    }
+
+    static func localCertificateRequirement(identifier: String, certificateData: Data) -> SecRequirement? {
+        guard self.isLocalIdentifier(identifier),
+              SecCertificateCreateWithData(nil, certificateData as CFData) != nil
+        else { return nil }
+        // Security's certificate equality grammar takes SHA-1; policy selection above uses SHA-256 of the same DER.
+        let fingerprint = self.hexString(for: Data(Insecure.SHA1.hash(data: certificateData)))
+        let source = "identifier \"\(identifier)\" and certificate leaf = H\"\(fingerprint)\""
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString(source as CFString, SecCSFlags(), &requirement) == errSecSuccess else {
+            return nil
+        }
+        return requirement
+    }
+
+    private static func isLocalIdentifier(_ identifier: String) -> Bool {
+        identifier == PeekabooBridgeConstants.cliBundleIdentifier || identifier == "boo.peekaboo.mac"
+    }
+
+    private static func certificateSHA256(_ data: Data) -> String {
+        self.hexString(for: Data(SHA256.hash(data: data)))
+    }
+
+    private static func leafCertificateData(_ information: [String: Any]) -> Data? {
+        guard let certificates = information[kSecCodeInfoCertificates as String] as? [SecCertificate],
+              let leaf = certificates.first
+        else { return nil }
+        return SecCertificateCopyData(leaf) as Data
     }
 
     private static func codePair(

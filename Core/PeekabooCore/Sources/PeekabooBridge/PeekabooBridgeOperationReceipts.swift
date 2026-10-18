@@ -1052,6 +1052,7 @@ extension PeekabooBridgeOperationReceiptAuthority {
         let auditToken: Data
         let bundleIdentifier: String?
         let teamIdentifier: String?
+        let localCertificateSHA256: String?
 
         init(
             clientInstanceID: UUID,
@@ -1070,6 +1071,7 @@ extension PeekabooBridgeOperationReceiptAuthority {
             self.auditToken = peerBinding.liveIdentity.auditToken
             self.bundleIdentifier = peerBinding.bundleIdentifier
             self.teamIdentifier = peerBinding.teamIdentifier
+            self.localCertificateSHA256 = peerBinding.localCertificateSHA256
         }
     }
 
@@ -1189,13 +1191,15 @@ extension PeekabooBridgeOperationReceiptAuthority {
         let bundleIdentifier: String?
         let teamIdentifier: String?
         let trustMode: PeekabooBridgeTrustMode?
+        let localCertificateSHA256: String?
 
         var peer: PeekabooBridgePeer {
             PeekabooBridgePeer(
                 liveIdentity: self.liveIdentity,
                 bundleIdentifier: self.bundleIdentifier,
                 teamIdentifier: self.teamIdentifier,
-                trustMode: self.trustMode)
+                trustMode: self.trustMode,
+                localCertificateSHA256: self.localCertificateSHA256)
         }
 
         init(peer: PeekabooBridgePeer) throws {
@@ -1220,6 +1224,7 @@ extension PeekabooBridgeOperationReceiptAuthority {
             self.bundleIdentifier = peer.bundleIdentifier
             self.teamIdentifier = peer.teamIdentifier
             self.trustMode = peer.trustMode
+            self.localCertificateSHA256 = peer.localCertificateSHA256
         }
     }
 

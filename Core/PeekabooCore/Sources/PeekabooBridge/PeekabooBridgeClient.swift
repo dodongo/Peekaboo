@@ -13,6 +13,7 @@ struct PeekabooBridgeClientHostAuthentication: @unchecked Sendable {
     let signingIdentity: SigningIdentityProvider
     let currentProcessIsReleaseSigned: @Sendable () -> Bool
     let unsignedDaemonPolicy: PeekabooBridgeUnsignedDaemonPolicy
+    let localSigningTrust: @Sendable () -> PeekabooBridgeLocalSigningTrust?
 
     init(
         liveIdentity: @escaping LiveIdentityProvider = {
@@ -21,11 +22,13 @@ struct PeekabooBridgeClientHostAuthentication: @unchecked Sendable {
         signingIdentity: @escaping SigningIdentityProvider,
         currentProcessIsReleaseSigned: @escaping @Sendable () -> Bool =
             PeekabooBridgeSigningDiagnostics.currentProcessIsReleaseSigned,
-        unsignedDaemonPolicy: PeekabooBridgeUnsignedDaemonPolicy? = nil)
+        unsignedDaemonPolicy: PeekabooBridgeUnsignedDaemonPolicy? = nil,
+        localSigningTrust: @escaping @Sendable () -> PeekabooBridgeLocalSigningTrust? = { .current })
     {
         self.liveIdentity = liveIdentity
         self.signingIdentity = signingIdentity
         self.currentProcessIsReleaseSigned = currentProcessIsReleaseSigned
+        self.localSigningTrust = localSigningTrust
         self.unsignedDaemonPolicy = unsignedDaemonPolicy ?? .init(
             currentProcessIsReleaseSigned: currentProcessIsReleaseSigned)
     }
@@ -176,6 +179,7 @@ public actor PeekabooBridgeClient {
     private var operationSessionRenewal: PeekabooBridgeClientOperationSessionRenewal?
     private var receiptlessAuthenticatedHost: PeekabooBridgeConnectedHostIdentity?
     private var receiptlessAuthenticationEpoch: UInt64 = 0
+    private let usesDefaultHostTrust: Bool
 
     /// Creates a Bridge client.
     ///
@@ -199,6 +203,7 @@ public actor PeekabooBridgeClient {
         self.decoder = decoder
         self.operationClientInstanceID = operationClientInstanceID
         self.hostAuthentication = .live
+        self.usesDefaultHostTrust = trustedHostTeamIDs == nil
         self.trustedHostTeamIDs = Self.resolveTrustedHostTeamIDs(
             explicit: trustedHostTeamIDs,
             socketPath: socketPath) ?? (self.hostAuthentication.unsignedDaemonPolicy.enabled
@@ -263,6 +268,7 @@ public actor PeekabooBridgeClient {
             socketPath: socketPath) ?? (hostAuthentication.unsignedDaemonPolicy.enabled
             ? PeekabooBridgeConstants.trustedReleaseTeamIDs : nil)
         self.hostAuthentication = hostAuthentication
+        self.usesDefaultHostTrust = trustedHostTeamIDs == nil
         self.enqueueTransport = enqueueTransport
         let environmentDirectory = ProcessInfo.processInfo.environment["PEEKABOO_OPERATION_RECEIPT_DIRECTORY"]
             .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
@@ -870,7 +876,8 @@ public actor PeekabooBridgeClient {
             trustedTeamIDs: trustedHostTeamIDs,
             hostKind: hostKind,
             unsignedDaemonPolicy: self.hostAuthentication.unsignedDaemonPolicy,
-            currentProcessIsReleaseSigned: self.hostAuthentication.currentProcessIsReleaseSigned)
+            currentProcessIsReleaseSigned: self.hostAuthentication.currentProcessIsReleaseSigned,
+            localSigningTrust: self.usesDefaultHostTrust ? self.hostAuthentication.localSigningTrust() : nil)
     }
 
     private func handshakeCandidate(

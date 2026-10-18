@@ -15,6 +15,7 @@ public struct PeekabooBridgePeer: Sendable {
     public let teamIdentifier: String?
     let liveIdentity: PeekabooBridgeLivePeerIdentity?
     let trustMode: PeekabooBridgeTrustMode?
+    let localCertificateSHA256: String?
 
     public init(
         processIdentifier: pid_t,
@@ -34,15 +35,18 @@ public struct PeekabooBridgePeer: Sendable {
         self.teamIdentifier = teamIdentifier
         self.liveIdentity = nil
         self.trustMode = nil
+        self.localCertificateSHA256 = nil
     }
 
     init(
         liveIdentity: PeekabooBridgeLivePeerIdentity,
         bundleIdentifier: String?,
         teamIdentifier: String?,
-        trustMode: PeekabooBridgeTrustMode? = nil)
+        trustMode: PeekabooBridgeTrustMode? = nil,
+        localCertificateSHA256: String? = nil)
     {
         self.trustMode = trustMode
+        self.localCertificateSHA256 = localCertificateSHA256
         self.processIdentifier = liveIdentity.processIdentifier
         self.auditTokenProcessIdentifierVersion = liveIdentity.processIdentifierVersion
         self.processStartIdentity = liveIdentity.processStartIdentity

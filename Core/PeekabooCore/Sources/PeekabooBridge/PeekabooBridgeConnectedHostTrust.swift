@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 enum PeekabooBridgeConnectedHostTrust {
@@ -9,7 +10,8 @@ enum PeekabooBridgeConnectedHostTrust {
         hostKind: PeekabooBridgeHostKind? = nil,
         unsignedDaemonPolicy: PeekabooBridgeUnsignedDaemonPolicy = .init(),
         currentProcessIsReleaseSigned: () -> Bool = PeekabooBridgeSigningDiagnostics
-            .currentProcessIsReleaseSigned) throws -> PeekabooBridgeTrustMode
+            .currentProcessIsReleaseSigned,
+        localSigningTrust: PeekabooBridgeLocalSigningTrust? = .current) throws -> PeekabooBridgeTrustMode
     {
         let failedCheck: String
         if let host {
@@ -17,8 +19,16 @@ enum PeekabooBridgeConnectedHostTrust {
                 if let signing = host.signingIdentity {
                     if signing.codeSignatureHash != liveHash {
                         failedCheck = "signed executable CDHash does not match the live socket peer"
-                    } else if let team = signing.teamIdentifier, trustedTeamIDs.contains(team) {
+                    } else if let team = signing.teamIdentifier, signing.localCertificateSHA256 == nil,
+                              trustedTeamIDs.contains(team) {
                         return .releaseSignature
+                    } else if signing.teamIdentifier == nil,
+                              host.liveIdentity.effectiveUserIdentifier == geteuid(),
+                              localSigningTrust?.acceptsHost(
+                                  socketPath: socketPath,
+                                  bundleIdentifier: signing.bundleIdentifier,
+                                  certificateSHA256: signing.localCertificateSHA256) == true {
+                        return .localCertificate
                     } else {
                         failedCheck = "signing Team ID is missing or not trusted"
                     }

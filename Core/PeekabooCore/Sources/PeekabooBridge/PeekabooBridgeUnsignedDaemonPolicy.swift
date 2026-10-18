@@ -3,11 +3,13 @@ import Foundation
 
 public enum PeekabooBridgeTrustMode: String, Codable, Sendable {
     case releaseSignature
+    case localCertificate
     case unsignedSameBinaryDeveloperOptIn
 
     public var description: String {
         switch self {
         case .releaseSignature: "release signature"
+        case .localCertificate: "local certificate"
         case .unsignedSameBinaryDeveloperOptIn: "unsigned same-binary developer opt-in"
         }
     }

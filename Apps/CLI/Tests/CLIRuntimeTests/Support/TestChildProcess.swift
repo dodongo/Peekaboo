@@ -84,20 +84,15 @@ enum TestChildProcess {
             return URL(fileURLWithPath: override)
         }
 
-        let packageRoot = Self.packageRootURL()
-        let potentialPaths = [
-            packageRoot.appendingPathComponent(Self.currentArchitectureBuildPath),
-            packageRoot.appendingPathComponent(".build/debug/peekaboo"),
-            packageRoot.appendingPathComponent(Self.fallbackArchitectureBuildPath)
-        ]
+        return try Self.debugBinaryURL(packageRoot: Self.packageRootURL())
+    }
 
-        if let match = potentialPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) }) {
-            return match
+    static func debugBinaryURL(packageRoot: URL) throws -> URL {
+        let binary = packageRoot.appendingPathComponent(".build/debug/peekaboo")
+        guard FileManager.default.isExecutableFile(atPath: binary.path) else {
+            throw RuntimeError("Unable to locate current debug peekaboo binary at \(binary.path)")
         }
-
-        throw RuntimeError(
-            "Unable to locate peekaboo binary. Checked: \n\(potentialPaths.map(\.path).joined(separator: "\n"))"
-        )
+        return binary
     }
 
     static func canLocatePeekabooBinary() -> Bool {
@@ -111,24 +106,6 @@ enum TestChildProcess {
             url.deleteLastPathComponent()
         }
         return url
-    }
-
-    private static var currentArchitectureBuildPath: String {
-        #if arch(arm64)
-        ".build/arm64-apple-macosx/debug/peekaboo"
-        #elseif arch(x86_64)
-        ".build/x86_64-apple-macosx/debug/peekaboo"
-        #else
-        ".build/debug/peekaboo"
-        #endif
-    }
-
-    private static var fallbackArchitectureBuildPath: String {
-        #if arch(arm64)
-        ".build/x86_64-apple-macosx/debug/peekaboo"
-        #else
-        ".build/arm64-apple-macosx/debug/peekaboo"
-        #endif
     }
 }
 

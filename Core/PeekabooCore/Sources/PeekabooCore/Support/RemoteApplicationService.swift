@@ -113,7 +113,10 @@ public final class RemoteApplicationService: ApplicationServiceProtocol,
     {
         // Reuse window listing filtered by application via WindowTarget.application
         let windows = try await self.client.listWindows(target: .application(appIdentifier))
-        let data = ServiceWindowListData(windows: windows, targetApplication: nil)
+        // Resolve the owning application so identity-checking consumers (verify) can confirm
+        // PID ownership; degrade to nil on failure, which readers treat as unconfirmed.
+        let targetApplication = try? await self.client.findApplication(identifier: appIdentifier)
+        let data = ServiceWindowListData(windows: windows, targetApplication: targetApplication)
         return UnifiedToolOutput(
             data: data,
             summary: .init(
