@@ -91,7 +91,7 @@ struct ExactLiteralTypingEffectConfirmation {
               let role = snapshot.role,
               let windowID = snapshot.windowID,
               !snapshot.frame.isEmpty,
-              self.windowBounds.contains(CGPoint(x: snapshot.frame.midX, y: snapshot.frame.midY)),
+              self.windowBounds.intersects(snapshot.frame),
               retainedElement == nil || snapshot.nativeElement == retainedElement
         else { return nil }
         let actual = FocusedElementIdentity(

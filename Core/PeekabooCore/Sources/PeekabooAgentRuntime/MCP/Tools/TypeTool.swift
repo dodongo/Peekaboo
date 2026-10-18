@@ -817,7 +817,7 @@ extension TypeTool {
                 FocusedElementReceiptError.missingElementFrame.localizedDescription,
                 refusalReason: .targetUnavailable)
         }
-        guard exactWindow.bounds.contains(CGPoint(x: element.frame.midX, y: element.frame.midY)) else {
+        guard exactWindow.bounds.intersects(element.frame) else {
             throw TypeToolValidationError(
                 FocusedElementReceiptError.elementOutsideWindow.localizedDescription,
                 refusalReason: .targetUnavailable)

@@ -94,7 +94,7 @@ public enum UIAutomationTarget: Sendable, Equatable {
                         field: "target",
                         reason: FocusedElementReceiptError.missingElementFrame.localizedDescription)
                 }
-                guard bounds.contains(CGPoint(x: focusedElement.frame.midX, y: focusedElement.frame.midY)) else {
+                guard bounds.intersects(focusedElement.frame) else {
                     throw PeekabooError.invalidInput(
                         field: "target",
                         reason: FocusedElementReceiptError.elementOutsideWindow.localizedDescription)
@@ -283,7 +283,7 @@ public enum UIAutomationTarget: Sendable, Equatable {
                 reason: FocusedElementReceiptError.windowMismatch.localizedDescription + " " +
                     BackgroundKeyboardFocusRemediation.message)
         }
-        guard exactWindow.bounds.contains(CGPoint(x: focusedElement.frame.midX, y: focusedElement.frame.midY)) else {
+        guard exactWindow.bounds.intersects(focusedElement.frame) else {
             throw PeekabooError.invalidInput(
                 field: "target",
                 reason: FocusedElementReceiptError.elementOutsideWindow.localizedDescription)

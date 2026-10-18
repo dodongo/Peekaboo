@@ -1251,7 +1251,7 @@ extension BackgroundInputDriver {
               focused.processIdentifier == exactWindow.identity.ownerProcessIdentifier,
               focused.windowID == exactWindow.identity.windowID,
               !focused.frame.isEmpty,
-              exactWindow.bounds.contains(CGPoint(x: focused.frame.midX, y: focused.frame.midY))
+              exactWindow.bounds.intersects(focused.frame)
         else {
             throw refusal
         }

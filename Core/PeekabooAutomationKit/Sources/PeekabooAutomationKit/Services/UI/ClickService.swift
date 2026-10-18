@@ -261,10 +261,7 @@ public final class ClickService {
         guard focusedElement.windowID == exactWindow.identity.windowID else {
             throw FocusedElementReceiptError.windowMismatch
         }
-        guard exactWindow.bounds.contains(CGPoint(
-            x: focusedElement.frame.midX,
-            y: focusedElement.frame.midY))
-        else {
+        guard exactWindow.bounds.intersects(focusedElement.frame) else {
             throw FocusedElementReceiptError.elementOutsideWindow
         }
     }

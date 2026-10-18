@@ -145,7 +145,7 @@ extension UIAutomationService {
         }
         guard
             !focused.frame.isEmpty,
-            expectedWindowBounds.contains(CGPoint(x: focused.frame.midX, y: focused.frame.midY)),
+            expectedWindowBounds.intersects(focused.frame),
             Self.focusedElementMatches(focused, expected: expectedFocusedElement, phase: phase),
             identityValidator(expectedWindowIdentity, expectedWindowBounds)
         else {

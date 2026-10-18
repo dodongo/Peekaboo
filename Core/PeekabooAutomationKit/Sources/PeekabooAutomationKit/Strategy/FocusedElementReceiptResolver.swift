@@ -41,7 +41,7 @@ public enum FocusedElementReceiptResolver {
         guard !element.bounds.isEmpty else {
             throw FocusedElementReceiptError.missingElementFrame
         }
-        guard windowBounds.contains(CGPoint(x: element.bounds.midX, y: element.bounds.midY)) else {
+        guard windowBounds.intersects(element.bounds) else {
             throw FocusedElementReceiptError.elementOutsideWindow
         }
         return FocusedElementIdentity(

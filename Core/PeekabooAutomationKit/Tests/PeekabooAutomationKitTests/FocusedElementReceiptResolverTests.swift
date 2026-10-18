@@ -25,6 +25,16 @@ struct FocusedElementReceiptResolverTests {
     }
 
     @Test
+    func `focused text view taller than its window is still exact window evidence`() throws {
+        let document = CGRect(x: 100, y: 120, width: 800, height: 12000)
+        let element = self.element(id: "elem_1", identifier: "editor", focused: true, frame: document)
+
+        let receipt = try FocusedElementReceiptResolver.uniqueReceipt(elements: [element], context: self.context())
+
+        #expect(receipt.frame == document)
+    }
+
+    @Test
     func `cached tree never republishes mutable focus evidence`() {
         let result = FocusedElementReceiptResolver.clearingObservedFocus(from: self.context())
 
