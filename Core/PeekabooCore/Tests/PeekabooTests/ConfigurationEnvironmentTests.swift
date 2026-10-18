@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import PeekabooFoundation
 import Testing
 @testable import PeekabooAgentRuntime
 @testable import PeekabooAutomation
@@ -9,6 +10,17 @@ import Testing
 @Suite(.serialized)
 struct ConfigurationManagerEnvironmentTests {
     private let manager = ConfigurationManager.shared
+
+    @Test
+    func `test runners without a config override use private storage`() throws {
+        let previousConfigDir = getenv("PEEKABOO_CONFIG_DIR").map { String(cString: $0) }
+        unsetenv("PEEKABOO_CONFIG_DIR")
+        defer { if let previousConfigDir { setenv("PEEKABOO_CONFIG_DIR", previousConfigDir, 1) } }
+
+        let testRunnerRoot = try #require(TestRunnerStorage.rootURL)
+        #expect(ConfigurationManager.baseDir == testRunnerRoot.appendingPathComponent("config").path)
+        #expect(ConfigurationManager.legacyConfigDir == testRunnerRoot.appendingPathComponent("legacy-config").path)
+    }
 
     @Test
     func `expandEnvironmentVariables uses process environment when ConfigReader unavailable`() {

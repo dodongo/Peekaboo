@@ -1,4 +1,5 @@
 import Foundation
+import PeekabooFoundation
 import Testing
 @testable import PeekabooAutomationKit
 
@@ -565,11 +566,10 @@ struct DesktopMutationWatermarkStoreTests {
     }
 
     @Test
-    func `Test runners coordinate outside the account's live root`() {
-        #expect(DesktopCoordinationRuntimeRoot.isTestRunner(ProcessInfo.processInfo.processName))
-        #expect(DesktopCoordinationRuntimeRoot.defaultURL.lastPathComponent == "peekaboo-test-coordination-\(getpid())")
-        #expect(!DesktopCoordinationRuntimeRoot.isTestRunner("Peekaboo"))
-        #expect(!DesktopCoordinationRuntimeRoot.isTestRunner("peekaboo"))
+    func `Test runners coordinate outside the account's live root`() throws {
+        let testRunnerRoot = try #require(TestRunnerStorage.rootURL)
+        #expect(testRunnerRoot.lastPathComponent == "peekaboo-test-runner-\(getpid())")
+        #expect(DesktopCoordinationRuntimeRoot.defaultURL.deletingLastPathComponent() == testRunnerRoot)
     }
 
     @Test

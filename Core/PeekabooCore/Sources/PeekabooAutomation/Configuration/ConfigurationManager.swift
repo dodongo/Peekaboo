@@ -20,19 +20,26 @@ public final class ConfigurationManager: @unchecked Sendable {
 
     /// Base directory for all Peekaboo configuration
     ///
-    /// Can be overridden in tests or automation via `PEEKABOO_CONFIG_DIR`.
+    /// Can be overridden in tests or automation via `PEEKABOO_CONFIG_DIR`. Test runners without an
+    /// override use private per-process storage instead of `~/.peekaboo`.
     public static var baseDir: String {
         if let override = ProcessInfo.processInfo.environment["PEEKABOO_CONFIG_DIR"],
            !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
             return NSString(string: override).expandingTildeInPath
         }
+        if let testRunnerRoot = TestRunnerStorage.rootURL {
+            return testRunnerRoot.appendingPathComponent("config", isDirectory: true).path
+        }
         return NSString(string: "~/.peekaboo").expandingTildeInPath
     }
 
     /// Legacy configuration directory (for migration)
     public static var legacyConfigDir: String {
-        NSString(string: "~/.config/peekaboo").expandingTildeInPath
+        if let testRunnerRoot = TestRunnerStorage.rootURL {
+            return testRunnerRoot.appendingPathComponent("legacy-config", isDirectory: true).path
+        }
+        return NSString(string: "~/.config/peekaboo").expandingTildeInPath
     }
 
     /// Default configuration file path
