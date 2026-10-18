@@ -9,23 +9,26 @@ struct TypeActionReplacementPolicyTests {
     }
 
     @Test(arguments: [
-        "\u{0}", "\t", "\n", "\r", "\u{7F}", "\u{85}", "\u{200B}", "\u{200C}",
+        "\u{0}", "\r", "\u{7F}", "\u{85}", "\u{200B}", "\u{200C}",
         "\u{200D}", "\u{202E}", "\u{2066}", "\u{FEFF}", "\u{E0067}", "👩🏽‍💻",
     ])
-    func `control and format scalar exclusions remain wire compatible`(_ text: String) {
+    func `nonliteral control and format scalars remain ineligible`(_ text: String) {
         #expect(!TypeAction.hasDeterministicReplacementValue([.clear, .text(text)]))
         #expect(!TypeAction.hasDeterministicReplacementValue([.clear, .text("ok"), .text(text)]))
     }
 
     @Test
-    func `only one leading clear followed by text has a deterministic replacement value`() {
+    func `literal text and optional leading clear have a deterministic replacement value`() {
         #expect(TypeAction.hasDeterministicReplacementValue([.clear]))
         #expect(!TypeAction.hasDeterministicReplacementValue([]))
-        #expect(!TypeAction.hasDeterministicReplacementValue([.text("x")]))
+        #expect(TypeAction.hasDeterministicReplacementValue([.text("x")]))
+        #expect(TypeAction.hasDeterministicReplacementValue([.text("line\nnext\tend")]))
+        #expect(TypeAction.hasDeterministicReplacementValue([.text("line"), .key(.return), .key(.tab)]))
+        #expect(TypeAction.hasDeterministicReplacementValue([.clear, .key(.return), .key(.tab)]))
         #expect(!TypeAction.hasDeterministicReplacementValue([.text(""), .clear]))
         #expect(!TypeAction.hasDeterministicReplacementValue([.clear, .clear]))
         #expect(!TypeAction.hasDeterministicReplacementValue([.clear, .text("x"), .clear]))
-        for key in [SpecialKey.space, .return, .leftArrow, .delete] {
+        for key in [SpecialKey.space, .leftArrow, .delete] {
             #expect(!TypeAction.hasDeterministicReplacementValue([.clear, .key(key)]))
         }
     }

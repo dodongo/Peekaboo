@@ -178,10 +178,19 @@ public enum TypeAction: Sendable, Codable {
 
     /// Shared action-shape eligibility; confirmation still requires exact receiver and value evidence.
     public static func hasDeterministicReplacementValue(_ actions: [Self]) -> Bool {
-        guard actions.first?.isClear == true else { return false }
-        return actions.dropFirst().allSatisfy { action in
-            guard case let .text(text) = action else { return false }
-            return text.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
+        guard let first = actions.first else { return false }
+        let literal = first.isClear ? actions.dropFirst() : actions[...]
+        return literal.allSatisfy { action in
+            switch action {
+            case let .text(text):
+                text.unicodeScalars.allSatisfy {
+                    !CharacterSet.controlCharacters.contains($0) || $0 == "\n" || $0 == "\t"
+                }
+            case .key(.return), .key(.tab):
+                true
+            default:
+                false
+            }
         }
     }
 

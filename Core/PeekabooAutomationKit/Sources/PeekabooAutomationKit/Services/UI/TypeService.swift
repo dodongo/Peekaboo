@@ -1464,8 +1464,12 @@ extension TypeService {
         guard let confirmation,
               let baseline,
               let retainedElement = baseline.nativeElement,
-              let preflightValue = baseline.value,
-              !confirmation.expectedValueMatches(preflightValue)
+              let baselineValue = baseline.value
+        else { return outcome }
+        let preflightValue = ExactLiteralTypingEffectConfirmation.Baseline(
+            value: baselineValue, selectedTextRange: baseline.selectedTextRange)
+        guard let expectedValue = confirmation.expectedValue(after: preflightValue),
+              !baselineValue.utf8.elementsEqual(expectedValue.utf8)
         else { return outcome }
         let timing = self.effectConfirmationTiming
         let deadline = timing.now().advanced(by: timing.timeout)
@@ -1482,7 +1486,7 @@ extension TypeService {
                 let observedValue = observed.value,
                 !Task.isCancelled
             else { return outcome }
-            if confirmation.expectedValueMatches(observedValue) {
+            if observedValue.utf8.elementsEqual(expectedValue.utf8) {
                 return confirmation.confirmedOutcome(
                     from: outcome,
                     previousValue: preflightValue,

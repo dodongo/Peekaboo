@@ -164,10 +164,13 @@ private func prepareFocusSelection(
             hint: "Use a more specific title or select the window by ID after refreshing the window inventory."
         )
     }
+    // Focus resolves an Accessibility window, so rows without one (stray utility surfaces,
+    // attached sheets) cannot be focus targets.
+    let focusable = matches.filter { $0.observationCapability?.mode != .pixelsOnly }
     let preferredWindow = if case .application = target {
-        ObservationTargetResolver.bestWindow(from: matches) ?? matches.first
+        ObservationTargetResolver.bestWindow(from: focusable) ?? focusable.first
     } else {
-        matches.first
+        focusable.first
     }
     guard let selected = preferredWindow,
           let identity = selected.mutationIdentity,

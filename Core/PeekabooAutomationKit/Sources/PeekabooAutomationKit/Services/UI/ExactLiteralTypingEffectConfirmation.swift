@@ -33,13 +33,24 @@ struct ExactLiteralTypingEffectConfirmationTiming: Sendable {
     }
 }
 
-/// Internal postcondition for the one exact typing shape whose final value is deterministic.
+/// Confirms literal typing from the baseline value and selection without exposing field contents.
 /// Text values stay inside the operation lane and are never added to public results or logs.
 struct ExactLiteralTypingEffectConfirmation {
+    struct Baseline: Sendable, Equatable {
+        let value: String
+        let selectedTextRange: NSRange?
+
+        init(value: String, selectedTextRange: NSRange? = nil) {
+            self.value = value
+            self.selectedTextRange = selectedTextRange
+        }
+    }
+
     let focusedElement: FocusedElementIdentity
     let processStartIdentity: UInt64
     private let windowBounds: CGRect
-    private let expectedValue: String
+    private let literal: String
+    private let clearsFirst: Bool
 
     static func plan(
         actions: [TypeAction],
@@ -50,17 +61,23 @@ struct ExactLiteralTypingEffectConfirmation {
               TypeAction.hasDeterministicReplacementValue(actions)
         else { return nil }
 
-        var expectedValue = ""
-        for action in actions.dropFirst() {
-            if case let .text(text) = action {
-                expectedValue += text
+        let clearsFirst = actions.first?.isClear == true
+        let literalActions = clearsFirst ? actions.dropFirst() : actions[...]
+        var literal = ""
+        for action in literalActions {
+            switch action {
+            case let .text(text): literal += text
+            case .key(.return): literal += "\n"
+            case .key(.tab): literal += "\t"
+            default: return nil
             }
         }
         return Self(
             focusedElement: focusedElement,
             processStartIdentity: target.identity.ownerProcessStartIdentity,
             windowBounds: target.bounds,
-            expectedValue: expectedValue)
+            literal: literal,
+            clearsFirst: clearsFirst)
     }
 
     func readableValue(
@@ -70,6 +87,7 @@ struct ExactLiteralTypingEffectConfirmation {
         guard case let .success(snapshot) = observation,
               snapshot.role != "AXSecureTextField",
               snapshot.subrole != "AXSecureTextField",
+              snapshot.subroleIsReadable,
               let role = snapshot.role,
               let windowID = snapshot.windowID,
               !snapshot.frame.isEmpty,
@@ -91,25 +109,32 @@ struct ExactLiteralTypingEffectConfirmation {
         return snapshot.value
     }
 
+    func expectedValue(after baseline: Baseline) -> String? {
+        if self.clearsFirst || baseline.value.isEmpty {
+            return self.literal
+        }
+        guard let selection = baseline.selectedTextRange,
+              let range = Range(selection, in: baseline.value)
+        else { return nil }
+        return baseline.value.replacingCharacters(in: range, with: self.literal)
+    }
+
     func confirmedOutcome(
         from outcome: DesktopActionOutcome,
-        previousValue: String,
+        previousValue: Baseline,
         observedValue: String) -> DesktopActionOutcome
     {
         guard let delivery = outcome.delivery,
               outcome.state == .dispatchedUnverified,
               Self.supportsExactBackgroundDelivery(delivery),
-              !previousValue.utf8.elementsEqual(self.expectedValue.utf8),
-              observedValue.utf8.elementsEqual(self.expectedValue.utf8)
+              let expectedValue = self.expectedValue(after: previousValue),
+              !previousValue.value.utf8.elementsEqual(expectedValue.utf8),
+              observedValue.utf8.elementsEqual(expectedValue.utf8)
         else { return outcome }
         return .confirmedChange(
             route: outcome.route,
             delivery: delivery,
             unitCount: outcome.dispatchState.unitCount)
-    }
-
-    func expectedValueMatches(_ value: String) -> Bool {
-        value.utf8.elementsEqual(self.expectedValue.utf8)
     }
 
     private static func supportsExactBackgroundDelivery(_ delivery: DesktopActionOutcome.Delivery) -> Bool {

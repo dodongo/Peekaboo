@@ -74,6 +74,57 @@ struct PeekabooBridgeDesktopObservationBindingTests: DesktopObservationBindingFi
     }
 
     @Test
+    func `accessibility window title may differ from the WindowServer title when the window ID matches`() throws {
+        let fixture = Self.windowResult(.init(
+            processIdentifier: 42,
+            generation: 1001,
+            bundleIdentifier: "com.google.Chrome",
+            applicationName: "Google Chrome",
+            windowID: 73,
+            title: "Document - Google Chrome",
+            index: 0))
+        let original = try #require(fixture.result.target.detectionContext)
+        let detectionOptions = DesktopDetectionOptions(mode: .accessibility)
+        let request = DesktopObservationRequest(
+            target: .pid(42, window: .title("Document - Google Chrome")),
+            detection: detectionOptions)
+
+        func result(windowID: Int?) -> DesktopObservationResult {
+            Self.replacingElements(
+                fixture.result,
+                with: ElementDetectionResult(
+                    snapshotId: "snapshot",
+                    screenshotPath: "",
+                    elements: .init(),
+                    metadata: .init(
+                        detectionTime: 0,
+                        elementCount: 0,
+                        method: "fixture",
+                        windowContext: WindowContext(
+                            applicationName: original.applicationName,
+                            applicationBundleId: original.applicationBundleId,
+                            applicationProcessId: original.applicationProcessId,
+                            windowTitle: "Document - Google Chrome - Donald (Person 1)",
+                            windowID: windowID,
+                            windowBounds: original.windowBounds,
+                            windowMutationIdentity: windowID == nil ? nil : original.windowMutationIdentity,
+                            shouldFocusWebContent: false,
+                            includeMenuBarElements: false,
+                            traversalBudget: detectionOptions.traversalBudget),
+                        isDialog: false)))
+        }
+
+        #expect(PeekabooBridgeDesktopObservationBinding.mismatch(
+            request: request,
+            result: result(windowID: 73),
+            requireContentDigest: false) == nil)
+        #expect(PeekabooBridgeDesktopObservationBinding.mismatch(
+            request: request,
+            result: result(windowID: nil),
+            requireContentDigest: false) == "window-context window title")
+    }
+
+    @Test
     @MainActor
     func `matching observation selector and evidence pass live and offline validation`() async throws {
         let fixture = Self.windowResult(.init(

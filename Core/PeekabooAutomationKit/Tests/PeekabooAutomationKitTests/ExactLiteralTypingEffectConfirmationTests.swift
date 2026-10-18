@@ -19,11 +19,11 @@ struct ExactLiteralTypingEffectConfirmationTests {
 
         let confirmed = confirmation.confirmedOutcome(
             from: dispatched,
-            previousValue: "",
+            previousValue: .init(value: ""),
             observedValue: "MAIN_BG_20260825")
         let mismatch = confirmation.confirmedOutcome(
             from: dispatched,
-            previousValue: "",
+            previousValue: .init(value: ""),
             observedValue: "")
 
         #expect(confirmed.state == .confirmedChange)
@@ -46,11 +46,11 @@ struct ExactLiteralTypingEffectConfirmationTests {
 
         #expect(confirmation.confirmedOutcome(
             from: dispatched,
-            previousValue: "old",
+            previousValue: .init(value: "old"),
             observedValue: precomposed).state == .confirmedChange)
         #expect(confirmation.confirmedOutcome(
             from: dispatched,
-            previousValue: "old",
+            previousValue: .init(value: "old"),
             observedValue: decomposed) == dispatched)
     }
 
@@ -65,22 +65,138 @@ struct ExactLiteralTypingEffectConfirmationTests {
 
         #expect(confirmation.confirmedOutcome(
             from: dispatched,
-            previousValue: "not empty",
+            previousValue: .init(value: "not empty"),
             observedValue: "").state == .confirmedChange)
         #expect(confirmation.confirmedOutcome(
             from: dispatched,
-            previousValue: "",
+            previousValue: .init(value: ""),
             observedValue: "") == dispatched)
     }
 
     @Test(arguments: [
-        [TypeAction.text("text without clear")],
-        [.clear, .key(.return)],
-        [.clear, .text("line\nbreak")],
-        [.clear, .text("tab\tvalue")],
+        [TypeAction.clear, .key(.delete)],
+        [.key(.escape)],
+        [.text("bell\u{7}")],
+        [.clear, .text("carriage\rreturn")],
     ])
-    func `selection-dependent and special-key shapes remain unverifiable`(_ actions: [TypeAction]) throws {
+    func `editing keys and other control characters remain unverifiable`(_ actions: [TypeAction]) throws {
         #expect(try ExactLiteralTypingEffectConfirmation.plan(actions: actions, target: self.target()) == nil)
+    }
+
+    @Test
+    func `text without clear confirms only when the field started empty`() throws {
+        let confirmation = try #require(ExactLiteralTypingEffectConfirmation.plan(
+            actions: [.text("fresh")],
+            target: self.target()))
+        let dispatched = DesktopActionOutcome.dispatchedUnverified(
+            delivery: .init(mechanism: .accessibilityValue, mode: .background),
+            evidence: .deliveryAccepted,
+            unitCount: .one)
+
+        #expect(confirmation.confirmedOutcome(
+            from: dispatched,
+            previousValue: .init(value: ""),
+            observedValue: "fresh").state == .confirmedChange)
+        #expect(confirmation.confirmedOutcome(
+            from: dispatched,
+            previousValue: .init(value: "old"),
+            observedValue: "fresh") == dispatched)
+    }
+
+    @Test(arguments: [
+        [TypeAction.text("Title\nFirst item\tSecond item")],
+        [.text("Title"), .key(.return), .text("First item"), .key(.tab), .text("Second item")],
+        [.clear, .text("Title\nFirst item"), .key(.tab), .text("Second item")],
+    ])
+    func `return and tab confirm as literal line breaks and tabs in any role`(_ actions: [TypeAction]) throws {
+        let confirmation = try #require(ExactLiteralTypingEffectConfirmation.plan(
+            actions: actions,
+            target: self.target()))
+        let dispatched = DesktopActionOutcome.dispatchedUnverified(
+            delivery: .init(mechanism: .accessibilityValue, mode: .background),
+            evidence: .deliveryAccepted,
+            unitCount: .one)
+
+        #expect(confirmation.confirmedOutcome(
+            from: dispatched,
+            previousValue: .init(value: ""),
+            observedValue: "Title\nFirst item\tSecond item").state == .confirmedChange)
+        #expect(confirmation.confirmedOutcome(
+            from: dispatched,
+            previousValue: .init(value: ""),
+            observedValue: "Title First item Second item") == dispatched)
+    }
+
+    @Test(arguments: [
+        ("Hello", NSRange(location: 5, length: 0), ", world", "Hello, world"),
+        ("Hello, friend", NSRange(location: 7, length: 6), "world", "Hello, world"),
+        ("world", NSRange(location: 0, length: 0), "Hello, ", "Hello, world"),
+        ("🦞 tail", NSRange(location: 2, length: 0), "\n", "🦞\n tail"),
+    ])
+    func `text in a non-empty field replaces the baseline selection`(
+        value: String,
+        selection: NSRange,
+        typed: String,
+        expected: String) throws
+    {
+        let confirmation = try #require(ExactLiteralTypingEffectConfirmation.plan(
+            actions: [.text(typed)],
+            target: self.target()))
+        let baseline = ExactLiteralTypingEffectConfirmation.Baseline(value: value, selectedTextRange: selection)
+        let dispatched = DesktopActionOutcome.dispatchedUnverified(
+            delivery: .init(mechanism: .windowTargetedEvents, mode: .background),
+            evidence: .deliveryAccepted,
+            unitCount: .one)
+
+        #expect(confirmation.expectedValue(after: baseline) == expected)
+        #expect(confirmation.confirmedOutcome(
+            from: dispatched,
+            previousValue: baseline,
+            observedValue: expected).state == .confirmedChange)
+        #expect(confirmation.confirmedOutcome(
+            from: dispatched,
+            previousValue: baseline,
+            observedValue: value + typed == expected ? typed + value : value + typed) == dispatched)
+    }
+
+    @Test
+    func `unknown or out-of-range selection in a non-empty field never confirms`() throws {
+        let confirmation = try #require(ExactLiteralTypingEffectConfirmation.plan(
+            actions: [.text("!")],
+            target: self.target()))
+        for selection in [nil, NSRange(location: 9, length: 0), NSRange(location: 2, length: 7)] {
+            let baseline = ExactLiteralTypingEffectConfirmation.Baseline(value: "Hello", selectedTextRange: selection)
+            #expect(confirmation.expectedValue(after: baseline) == nil)
+        }
+    }
+
+    @Test
+    func `baseline carries the focused selection and never reads secure fields`() throws {
+        let confirmation = try #require(ExactLiteralTypingEffectConfirmation.plan(
+            actions: [.text("!")],
+            target: self.target()))
+        let snapshot = ExactWindowFocusSnapshot(
+            processIdentifier: 333,
+            windowID: 42,
+            frame: CGRect(x: 20, y: 20, width: 200, height: 30),
+            role: "AXTextField",
+            identifier: "editor",
+            value: "Hello",
+            selectedTextRange: NSRange(location: 5, length: 0))
+        let value = try #require(confirmation.readableValue(from: .success(snapshot)))
+        #expect(confirmation.expectedValue(after: .init(
+            value: value,
+            selectedTextRange: snapshot.selectedTextRange)) == "Hello!")
+        let secure = ExactWindowFocusSnapshot(
+            processIdentifier: 333,
+            windowID: 42,
+            frame: CGRect(x: 20, y: 20, width: 200, height: 30),
+            role: "AXTextField",
+            subrole: "AXSecureTextField",
+            identifier: "editor",
+            value: "masked",
+            selectedTextRange: NSRange(location: 6, length: 0))
+        #expect(confirmation.readableValue(from: .success(secure)) == nil)
     }
 
     @Test
@@ -116,7 +232,7 @@ struct ExactLiteralTypingEffectConfirmationTests {
 
         #expect(confirmation.confirmedOutcome(
             from: foreground,
-            previousValue: "old",
+            previousValue: .init(value: "old"),
             observedValue: "safe") == foreground)
     }
 
@@ -132,7 +248,7 @@ struct ExactLiteralTypingEffectConfirmationTests {
 
         #expect(confirmation.confirmedOutcome(
             from: dispatched,
-            previousValue: "safe",
+            previousValue: .init(value: "safe"),
             observedValue: "safe") == dispatched)
     }
 
@@ -148,7 +264,7 @@ struct ExactLiteralTypingEffectConfirmationTests {
             unitCount: DesktopActionOutcome.DispatchUnitCount(7))
         let mismatch = confirmation.confirmedOutcome(
             from: dispatched,
-            previousValue: "old",
+            previousValue: .init(value: "old"),
             observedValue: "different")
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -266,6 +382,28 @@ struct ExactLiteralTypingEffectConfirmationTests {
             mechanism: .composite,
             mode: .background))
         #expect(clock.sleepCount == 1)
+    }
+
+    @Test(arguments: [nil, NSRange(location: 5, length: 0), NSRange(location: 99, length: 0)])
+    @MainActor
+    func `insertion typing confirms only with a valid baseline selection`(selection: NSRange?) async throws {
+        let value = TypingLockedValue("Hello")
+        let clock = TypingEffectPollClock { _ in value.set("Hello!") }
+        let service = self.eventFallbackService(
+            value: value,
+            timing: clock.timing(),
+            valueReader: { focusedElement, _ in
+                .success(Self.focusSnapshot(focusedElement, value: value.get(), selection: selection))
+            })
+        let summary = try await service.typeActionsTrackingSecureInput(
+            [.text("!")],
+            cadence: .fixed(milliseconds: 0),
+            snapshotId: nil,
+            automationTarget: .exactWindow(self.target()),
+            deliveryValidator: {},
+            validatedReceiverProvider: Self.validatedReceiver)
+        #expect(summary.executionResult.outcome.state ==
+            (selection?.location == 5 ? .confirmedChange : .dispatchedUnverified))
     }
 
     @Test
@@ -720,7 +858,8 @@ struct ExactLiteralTypingEffectConfirmationTests {
 
     private static func focusSnapshot(
         _ focusedElement: FocusedElementIdentity,
-        value: String) -> ExactWindowFocusSnapshot
+        value: String,
+        selection: NSRange? = nil) -> ExactWindowFocusSnapshot
     {
         ExactWindowFocusSnapshot(
             processIdentifier: focusedElement.processIdentifier,
@@ -729,6 +868,7 @@ struct ExactLiteralTypingEffectConfirmationTests {
             role: focusedElement.role,
             identifier: focusedElement.identifier,
             value: value,
+            selectedTextRange: selection,
             nativeElement: RetainedFocusElement(element: AXUIElementCreateApplication(focusedElement
                     .processIdentifier)))
     }

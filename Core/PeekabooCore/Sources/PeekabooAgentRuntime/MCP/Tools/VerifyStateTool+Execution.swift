@@ -420,9 +420,6 @@ extension VerifyStateTool {
         case let .application(identifier):
             do {
                 let output = try await self.context.applications.listApplications()
-                guard case .success = output.summary.status, output.metadata.warnings.isEmpty else {
-                    return .unknown(Self.incompleteApplicationListReason(output))
-                }
                 let applications = output.data.applications
                 let exactMatches = applications.filter { application in
                     application.bundleIdentifier == identifier ||
@@ -430,9 +427,17 @@ extension VerifyStateTool {
                 }
                 switch exactMatches.count {
                 case 0:
+                    guard case .success = output.summary.status, output.metadata.warnings.isEmpty else {
+                        return .unknown(Self.incompleteApplicationListReason(output))
+                    }
                     return .missing("Application '\(identifier)' is not running")
                 case 1:
-                    return .resolved(exactMatches[0])
+                    let application = exactMatches[0]
+                    if let warnings = application.metadataWarnings, !warnings.isEmpty {
+                        return .unknown(
+                            "Target application metadata was incomplete: \(warnings.joined(separator: ", "))")
+                    }
+                    return .resolved(application)
                 default:
                     return .unknown(
                         "Application '\(identifier)' has multiple exact process matches; use pid to disambiguate")

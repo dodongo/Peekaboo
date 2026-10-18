@@ -21,6 +21,7 @@ struct ExactWindowFocusSnapshot: Sendable, Equatable {
     let title: String?
     let identifier: String?
     let value: String?
+    let selectedTextRange: NSRange?
     let nativeElement: RetainedFocusElement?
 
     init(
@@ -33,6 +34,7 @@ struct ExactWindowFocusSnapshot: Sendable, Equatable {
         title: String? = nil,
         identifier: String? = nil,
         value: String? = nil,
+        selectedTextRange: NSRange? = nil,
         nativeElement: RetainedFocusElement? = nil)
     {
         self.processIdentifier = processIdentifier
@@ -44,6 +46,7 @@ struct ExactWindowFocusSnapshot: Sendable, Equatable {
         self.title = title
         self.identifier = identifier
         self.value = value
+        self.selectedTextRange = selectedTextRange
         self.nativeElement = nativeElement
     }
 }
@@ -244,6 +247,11 @@ enum DetachedExactWindowFocusReader {
                 AXUIElementSetMessagingTimeout(element, self.messagingTimeout)
                 defer { AXUIElementSetMessagingTimeout(element, 0) }
                 return self.stringAttribute(kAXValueAttribute as String, of: element)
+            },
+            readSelectedTextRange: {
+                AXUIElementSetMessagingTimeout(element, self.messagingTimeout)
+                defer { AXUIElementSetMessagingTimeout(element, 0) }
+                return self.rangeAttribute(kAXSelectedTextRangeAttribute, of: element)
             })
     }
 
@@ -254,15 +262,17 @@ enum DetachedExactWindowFocusReader {
             phase: KeyboardFocusValidationPhase),
         readSnapshot: () -> ExactWindowFocusSnapshot?,
         readFocusedState: () -> Bool?,
-        readValue: () -> String?) -> Result<ExactWindowFocusSnapshot, FocusedElementReceiptError>
+        readValue: () -> String?,
+        readSelectedTextRange: () -> NSRange? = { nil })
+        -> Result<ExactWindowFocusSnapshot, FocusedElementReceiptError>
     {
         let (expected, initialSnapshot, phase) = observation
         do {
             try self.validateValueSnapshot(initialSnapshot, expected: expected, phase: phase)
             guard let focused = readFocusedState() else { return .failure(.focusedAttributeUnreadable) }
             guard focused else { return .failure(.focusNotConfirmed) }
-            let value = self.allowsValueRead(initialSnapshot)
-                ? readValue() : nil
+            let value = self.allowsValueRead(initialSnapshot) ? readValue() : nil
+            let selectedTextRange = self.allowsValueRead(initialSnapshot) ? readSelectedTextRange() : nil
             // AXValue is a separate RPC; never attach its result to pre-read receiver authority.
             guard let current = readSnapshot() else { return .failure(.processMismatch) }
             try self.validateValueSnapshot(current, expected: expected, phase: phase)
@@ -279,6 +289,7 @@ enum DetachedExactWindowFocusReader {
                 title: current.title,
                 identifier: current.identifier,
                 value: self.allowsValueRead(current) ? value : nil,
+                selectedTextRange: self.allowsValueRead(current) ? selectedTextRange : nil,
                 nativeElement: current.nativeElement))
         } catch let error as FocusedElementReceiptError {
             return .failure(error)
@@ -643,6 +654,14 @@ enum DetachedExactWindowFocusReader {
         else { return nil }
         let value = read()
         return now() < deadline ? value : nil
+    }
+
+    private static func rangeAttribute(_ name: String, of element: AXUIElement) -> NSRange? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success,
+              let range = TextSelectionRange(nativeValue: value)
+        else { return nil }
+        return NSRange(location: range.location, length: range.length)
     }
 
     private static func boolAttribute(_ name: String, of element: AXUIElement) -> Bool? {

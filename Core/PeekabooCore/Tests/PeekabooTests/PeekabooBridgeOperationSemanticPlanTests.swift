@@ -246,11 +246,24 @@ struct PeekabooBridgeOperationSemanticPlanTests {
             route: .bridge,
             delivery: .init(mechanism: .composite, mode: .background),
             unitCount: .init(4))
-        #expect(!PeekabooBridgeOperationResultSemantics.successfulOutcomeMatchesContract(
+        #expect(PeekabooBridgeOperationResultSemantics.successfulOutcomeMatchesContract(
             forgedFocusConfirmed,
             request: pixelRequest))
+        let unconfirmablePixelRequest = PeekabooBridgeRequest.exactWindowPixelFocusType(.init(request: .init(
+            point: CGPoint(x: 40, y: 50),
+            actions: [.text("ab"), .key(.escape)],
+            cadence: .fixed(milliseconds: 0),
+            snapshotID: "snapshot",
+            windowIdentity: identity,
+            windowBounds: bounds)))
+        #expect(PeekabooBridgeOperationResultSemantics.successfulOutcomeMatchesContract(
+            pixelOutcome,
+            request: unconfirmablePixelRequest))
+        #expect(!PeekabooBridgeOperationResultSemantics.successfulOutcomeMatchesContract(
+            forgedFocusConfirmed,
+            request: unconfirmablePixelRequest))
         let signedForgedFocusConfirmed = try await Self.makeBundle(
-            request: projectedPixelRequest,
+            request: PeekabooBridgeRequest.projectedAction(.init(request: unconfirmablePixelRequest)),
             response: .projectedAction(.init(
                 response: .typeResult(pixelResult),
                 outcome: forgedFocusConfirmed.projection)),

@@ -183,6 +183,7 @@ struct AXMessagingTimeoutIntegrationTests {
         let invalidApplication = Element(AXUIElementCreateApplication(-1))
 
         #expect(WindowIdentityService().getWindowID(from: invalidApplication) == nil)
+        #expect(WindowIdentityService().focusedWindowID(from: invalidApplication) == nil)
     }
 
     @Test(arguments: [Float.zero, -0.1, -.infinity, .infinity, .nan])
@@ -190,6 +191,7 @@ struct AXMessagingTimeoutIntegrationTests {
         let application = Element(AXUIElementCreateApplication(getpid()))
 
         #expect(WindowIdentityService().getWindowID(from: application, messagingTimeout: timeout) == nil)
+        #expect(WindowIdentityService().focusedWindowID(from: application, messagingTimeout: timeout) == nil)
     }
 
     @Test
@@ -200,6 +202,7 @@ struct AXMessagingTimeoutIntegrationTests {
 
         try application.withMessagingTimeout(0.25) { _ in
             #expect(service.getWindowID(from: secondWrapper) == nil)
+            #expect(service.focusedWindowID(from: secondWrapper) == nil)
             #expect(throws: AXMessagingTimeoutError.nestedScope) {
                 try secondWrapper.withMessagingTimeout(0.5) { _ in
                     Issue.record("Identity refusal must preserve the outer owner")

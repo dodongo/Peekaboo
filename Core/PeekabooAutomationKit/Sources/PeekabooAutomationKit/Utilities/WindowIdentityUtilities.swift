@@ -95,6 +95,19 @@ public final class WindowIdentityService {
         }
     }
 
+    /// Resolve an application's focused window to its WindowServer ID, attributing an attached sheet
+    /// to the window that owns it: a sheet is modal to that one window and holds its keyboard focus.
+    func focusedWindowID(from focusedWindow: Element, messagingTimeout: Float = 0.25) -> CGWindowID? {
+        try? focusedWindow.withMessagingTimeout(messagingTimeout) { window in
+            guard window.role() == "AXSheet" else { return self.resolver.windowID(from: window) }
+            guard let owner = window.parent() else { return nil }
+            return try owner.withMessagingTimeout(messagingTimeout) { parent in
+                guard parent.role() == "AXWindow", parent.pid() == window.pid() else { return nil }
+                return self.resolver.windowID(from: parent)
+            }
+        }
+    }
+
     // MARK: - AX Lookup
 
     func findWindow(byID windowID: CGWindowID, in app: NSRunningApplication) -> AXWindowHandle? {
@@ -154,9 +167,7 @@ public final class WindowIdentityService {
         else {
             return nil
         }
-        return try? focusedWindow.withMessagingTimeout(Float(timeout)) { window in
-            self.resolver.windowID(from: window)
-        }
+        return self.focusedWindowID(from: focusedWindow, messagingTimeout: Float(timeout))
     }
 
     // MARK: - Window Information

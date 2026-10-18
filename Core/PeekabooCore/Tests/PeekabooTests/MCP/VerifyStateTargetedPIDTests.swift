@@ -159,10 +159,10 @@ struct VerifyStateTargetedPIDTests {
     }
 
     @Test
-    func `named application still requires complete exact-match inventory`() async throws {
+    func `missing named application still requires complete exact-match inventory`() async throws {
         let fixture = VerifyStateFixture()
         let applications = VerifyStateApplicationService(
-            applications: [fixture.application],
+            applications: [],
             windows: [fixture.window],
             applicationStatus: .partial,
             applicationWarnings: ["Inventory incomplete"])

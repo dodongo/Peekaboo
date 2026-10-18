@@ -56,6 +56,10 @@ struct ExactWindowValueObservationTests {
                 #expect(focusReads == 1)
                 afterValueRead = true
                 return "settled"
+            },
+            readSelectedTextRange: {
+                #expect(afterValueRead)
+                return NSRange(location: 2, length: 3)
             })
 
         #expect(afterValueRead)
@@ -64,11 +68,13 @@ struct ExactWindowValueObservationTests {
         case .stable, .secure, .secureMetadataUnreadable:
             let observed = try result.get()
             #expect(observed.value == (change == .stable ? "settled" : nil))
+            #expect(observed.selectedTextRange == (change == .stable ? NSRange(location: 2, length: 3) : nil))
             #expect(observed.nativeElement == receiver)
             #expect(focusReads == 2)
         case .reflow where phase == .continuation:
             let observed = try result.get()
             #expect(observed.value == "settled")
+            #expect(observed.selectedTextRange == NSRange(location: 2, length: 3))
             #expect(observed.frame == expected.frame.offsetBy(dx: 10, dy: 20))
             #expect(focusReads == 2)
         default:
@@ -109,8 +115,10 @@ struct ExactWindowValueObservationTests {
             observation: (expected: expected, initialSnapshot: initial, phase: .initial),
             readSnapshot: { Self.snapshot(expected: expected, receiver: receiver) },
             readFocusedState: { true },
-            readValue: { reads += 1; return "must remain unread" })
+            readValue: { reads += 1; return "must remain unread" },
+            readSelectedTextRange: { reads += 1; return NSRange(location: 0, length: 0) })
         #expect(try result.get().value == nil)
+        #expect(try result.get().selectedTextRange == nil)
         #expect(reads == 0)
     }
 

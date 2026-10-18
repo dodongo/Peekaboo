@@ -837,6 +837,37 @@ extension VerifyStateToolTests {
         #expect(Self.stringMeta("reason", response)?.contains("incomplete") == true)
     }
 
+    @Test(arguments: [false, true])
+    func `Unrelated process warnings do not make a resolved target unknown`(byApplication: Bool) async throws {
+        let fixture = VerifyStateFixture()
+        let unrelated = ServiceApplicationInfo(
+            processIdentifier: 543,
+            processStartIdentity: nil,
+            bundleIdentifier: "com.example.rootdaemon",
+            name: "RootDaemon",
+            windowCount: 0,
+            metadataWarnings: ["Process-generation identity was unavailable for PID 543"])
+        let applications = VerifyStateApplicationService(
+            applications: [fixture.application, unrelated],
+            windows: [fixture.window],
+            applicationStatus: .partial,
+            applicationWarnings: unrelated.metadataWarnings ?? [])
+        let context = await MCPToolTestHelpers.makeContext(
+            automation: fixture.automation,
+            applications: applications)
+        let selector: [String: Any] = byApplication
+            ? ["app": fixture.application.name]
+            : ["pid": Int(fixture.application.processIdentifier)]
+
+        let response = try await fixture.tool(context: context).execute(arguments: ToolArguments(raw: selector.merging([
+            "predicates": [["kind": "window_exists", "expected": true]],
+            "timeout_ms": 100,
+            "stable_samples": 1,
+        ], uniquingKeysWith: { _, rhs in rhs })))
+
+        #expect(Self.stringMeta("status", response) == "satisfied")
+    }
+
     @Test
     func `Partial application enumeration makes missing PID unknown`() async throws {
         let fixture = VerifyStateFixture()
