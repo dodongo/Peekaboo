@@ -428,7 +428,7 @@ extension PeekabooBridgeOperationResultSemantics {
         case let .certificationProducerAttestation(payload):
             .certificationProducerAttestation(payload)
         case let .typeActions(payload):
-            .typeActions(.init(actions: payload.actions))
+            .typeActions(.init(actions: payload.actions, allowsConfirmedChange: true))
         case let .targetedTypeActions(payload):
             .typeActions(.init(actions: payload.actions, allowsAccessibilityValueDelivery: true))
         case let .exactWindowTargetedTypeActions(payload):

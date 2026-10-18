@@ -327,6 +327,31 @@ struct PeekabooBridgeCompositeTypeDeliveryTests {
     }
 
     @Test
+    func `signed foreground typing carries a confirmed literal change`() async throws {
+        let automation = CompositeTypeAutomationService()
+        let services = StubServices(automation: automation)
+        let fixture = try await BridgeInputCapabilityFixture.startHost(
+            services: services,
+            supportedVersions: PeekabooBridgeConstants.minimumProtocolVersion...Self.featureVersion,
+            allowedOperations: [.typeActions])
+        defer { Task { await fixture.host.stop() } }
+        _ = try await fixture.client.handshake(client: Self.clientIdentity)
+        automation.actionOutcome = .confirmedChange(
+            delivery: .init(mechanism: .globalEvents, mode: .foreground),
+            unitCount: .init(2))
+
+        let typed = try await fixture.client.typeActionsWithOutcome(
+            [.text("z9")],
+            cadence: .fixed(milliseconds: 0),
+            snapshotId: nil)
+
+        #expect(typed.payload.totalCharacters == 2)
+        #expect(typed.outcome?.state == .confirmedChange)
+        #expect(typed.outcome?.delivery == .init(mechanism: .globalEvents, mode: .foreground))
+        await fixture.host.stop()
+    }
+
+    @Test
     func `protocol 1 36 signs exact AX clear composite typing and keyboard fallback counts`() async throws {
         let automation = CompositeTypeAutomationService()
         let services = StubServices(automation: automation)
