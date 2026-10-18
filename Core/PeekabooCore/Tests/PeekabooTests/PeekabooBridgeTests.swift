@@ -2244,6 +2244,7 @@ final class StubServices: PeekabooBridgeServiceProviding {
     var browserExecutionReceiptOverride: PeekabooBridgeBrowserConnectionReceipt?
     var browserCompletedCallCount: Int?
     var browserDispatchedCallCount: Int?
+    var browserProviderSessionEpoch: UUID?
     var preservesBrowserReceiptChannel = false
     private let ownedDesktopOperationLanes: Set<PeekabooBridgeOperation>
     var browserResponseContent: [PeekabooBridgeJSONValue] = [
@@ -2321,7 +2322,8 @@ final class StubServices: PeekabooBridgeServiceProviding {
                     webSocketDebuggerURL: self.browserConnectionReceipt.webSocketDebuggerURL,
                     devToolsBrowserID: self.browserConnectionReceipt.devToolsBrowserID,
                     browserVersion: self.browserConnectionReceipt.browserVersion,
-                    protocolVersion: self.browserConnectionReceipt.protocolVersion))
+                    protocolVersion: self.browserConnectionReceipt.protocolVersion),
+            providerSessionEpoch: self.browserProviderSessionEpoch)
     }
 
     func browserConnect(channel: String?, browserURL: String?) async throws -> PeekabooBridgeBrowserStatus {
@@ -2362,7 +2364,8 @@ final class StubServices: PeekabooBridgeServiceProviding {
             connectionReceipt: self.browserExecutionReceiptOverride ?? expectedConnectionReceipt,
             completedCallCount: self.browserCompletedCallCount ?? request.resolvedCalls.count,
             dispatchedCallCount: self.browserDispatchedCallCount ?? request.resolvedCalls.count,
-            actionFailure: actionFailure)
+            actionFailure: actionFailure,
+            providerSessionEpoch: self.browserProviderSessionEpoch)
     }
 }
 

@@ -51,6 +51,12 @@ public final class RemoteBrowserMCPClient: BrowserMCPClientProviding, BrowserMCP
     @MainActor private var scopedSessionEndTask: (id: UUID, task: Task<Bool, Never>)?
     @MainActor private var scopedSessionEndRequestGeneration: UInt64 = 0
 
+    @MainActor
+    public func supportsRootSessionBinding() async -> Bool {
+        guard self.sessionHandle == nil else { return false }
+        return await self.client.browserRootSessionBindingEnabled
+    }
+
     var hasScopedSessionTransport: Bool {
         self.sessionTransport != nil
     }
@@ -372,6 +378,21 @@ public final class RemoteBrowserMCPClient: BrowserMCPClientProviding, BrowserMCP
         expectedSessionBinding: BrowserMCPExecutionSessionBinding,
         elementPreflight: BrowserMCPElementPreflight?) async throws -> DesktopActionResult<ToolResponse>
     {
+        if self.sessionHandle == nil, elementPreflight == nil, await self.supportsRootSessionBinding() {
+            let bridgeCalls = try calls.map { call in
+                try PeekabooBridgeBrowserToolCall(
+                    toolName: call.toolName,
+                    arguments: call.arguments.mapValues { try PeekabooBridgeJSONValue.fromAny($0) })
+            }
+            let result = try await self.client.browserExecuteResult(.init(
+                calls: bridgeCalls,
+                channel: channel?.rawValue,
+                expectedConnectionReceipt: Self.bridgeReceipt(from: expectedSessionBinding.connectionReceipt),
+                connectionPolicy: .requireExistingLiveReceipt,
+                expectedProviderSessionEpoch: expectedSessionBinding.providerSessionEpoch.rawValue))
+            if result.outcome == nil, let failure = result.payload.actionFailure { throw failure }
+            return try DesktopActionResult(payload: Self.toolResponse(from: result.payload), outcome: result.outcome)
+        }
         guard let sessionHandle, let sessionTransport else {
             throw Self.scopedAtomicExecutionRequired()
         }
@@ -756,6 +777,7 @@ public final class RemoteBrowserMCPClient: BrowserMCPClientProviding, BrowserMCP
         return BrowserMCPStatus(
             isConnected: bridgeStatus.isConnected,
             toolCount: bridgeStatus.toolCount,
+            providerFeatures: bridgeStatus.providerFeatures,
             detectedBrowsers: detectedBrowsers,
             connectionReceipt: connectionReceipt,
             providerSessionEpoch: providerSessionEpoch,

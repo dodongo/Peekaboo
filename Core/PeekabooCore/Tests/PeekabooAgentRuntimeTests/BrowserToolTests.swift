@@ -26,6 +26,19 @@ struct BrowserToolTests {
         #expect(BrowserMCPUserActivationPolicy.decision(for: call).requiresForegroundAuthority)
     }
 
+    @Test
+    func `Chrome DevTools config uses auto connect and privacy flags`() {
+        let config = BrowserMCPService.chromeDevToolsConfig(channel: .beta)
+
+        #expect(config.command.hasSuffix("npx"))
+        #expect(config.args.contains("--package=chrome-devtools-mcp@1.10.1"))
+        #expect(config.args.contains("--page-id-routing"))
+        #expect(config.args.contains("--auto-connect"))
+        #expect(config.args.contains("--channel=beta"))
+        #expect(config.args.contains("--no-usage-statistics"))
+        #expect(config.args.contains("--no-performance-crux"))
+    }
+
     @Test(arguments: ["page_id", "uid"])
     func `DOM click rejects missing target before provider entry`(missing: String) async throws {
         let client = UserActivationCountingBrowserMCPClient()
@@ -336,6 +349,27 @@ struct BrowserToolTests {
         #expect(meta["retry_safety"] == .string("unsafe"))
         #expect(meta["retry_safe"] == .bool(false))
         #expect(meta["mutation_dispatched"] == .bool(true))
+    }
+
+    @Test
+    func `Browser foreground wait preserves bounded provider failure without weakening retry safety`() async throws {
+        let client = OutcomeBrowserMCPClient(result: .init(
+            payload: .error("Network idle timed out. " + String(repeating: "x", count: 2000)),
+            outcome: nil))
+        let response = try await BrowserTool(client: client, executionPolicy: .unrestricted)
+            .execute(arguments: ToolArguments(raw: [
+                "action": "call",
+                "page_id": 7,
+                "mcp_tool": "wait_for",
+                "mcp_args_json": #"{"loadState":"networkidle","timeout":150}"#,
+            ]))
+        #expect(response.isError)
+        #expect(Self.text(from: response).contains("Provider error: Network idle timed out."))
+        #expect(!Self.text(from: response).contains(String(repeating: "x", count: 1001)))
+        let meta = try #require(response.meta?.objectValue)
+        #expect(meta["state"] == .string("indeterminate"))
+        #expect(meta["retry_safe"] == .bool(false))
+        #expect(meta["requires_fresh_observation"] == .bool(true))
     }
 
     @Test(arguments: ["click", "dom_click"])
@@ -736,11 +770,11 @@ struct BrowserToolTests {
         #expect(BrowserMCPPageRoutingContract.dependencyVersion == "1.10.1")
         #expect(BrowserMCPPageRoutingContract.capabilityContract(for: "get_css_styles") == nil)
         #expect(!BrowserMCPUserActivationPolicy.registeredToolNames.contains("get_css_styles"))
-        #expect(BrowserMCPPageRoutingContract.pageScopedToolNames.count == 33)
+        #expect(BrowserMCPPageRoutingContract.pageScopedToolNames.count == 34)
         #expect(BrowserMCPPageRoutingContract.explicitPageTargetToolNames.count == 3)
         #expect(BrowserMCPPageRoutingContract.globalToolNames.count == 22)
         #expect(BrowserMCPPageRoutingContract.blockedSelectedPageToolNames == ["trigger_extension_action"])
-        #expect(BrowserMCPPageRoutingContract.allToolNames.count == 59)
+        #expect(BrowserMCPPageRoutingContract.allToolNames.count == 60)
         #expect(BrowserMCPPageRoutingContract.pageTargetedToolNames.isDisjoint(
             with: BrowserMCPPageRoutingContract.globalToolNames))
         #expect(BrowserMCPPageRoutingContract.pageTargetedToolNames.isDisjoint(
@@ -749,7 +783,7 @@ struct BrowserToolTests {
             with: BrowserMCPPageRoutingContract.blockedSelectedPageToolNames))
         #expect(BrowserMCPPageRoutingContract.routing(for: "trigger_extension_action") == .blockedSelectedPage)
         #expect(BrowserMCPPageRoutingContract.readOnlyToolNames.count == 31)
-        #expect(BrowserMCPPageRoutingContract.mutatingToolNames.count == 26)
+        #expect(BrowserMCPPageRoutingContract.mutatingToolNames.count == 27)
         #expect(BrowserMCPPageRoutingContract.argumentDependentToolNames == [
             "performance_start_trace",
             "select_page",

@@ -77,7 +77,13 @@ public enum PeekabooBridgeConstants {
     }
 
     /// Current protocol version supported by this build.
-    public static let protocolVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 43)
+    public static let protocolVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 44)
+
+    /// First protocol with atomic receipt and provider-epoch checks for CLI browser streams.
+    public static let browserRootSessionBindingVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 44)
+
+    /// First protocol exposing browser provider features without changing older signed responses.
+    public static let browserProviderFeaturesVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 44)
 
     /// Same-version clients must also offer the raw capability before receiving the new preparation operation.
     public static let scopedMenuBarActionsVersion = PeekabooBridgeProtocolVersion(major: 1, minor: 43)

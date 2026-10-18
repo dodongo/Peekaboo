@@ -10,7 +10,7 @@ struct BrowserMCPUserActivationPolicyTests {
             "list_console_messages", "list_network_requests", "list_pages", "navigate_page", "new_page",
             "performance_analyze_insight", "performance_start_trace", "performance_stop_trace", "press_key",
             "resize_page", "select_page", "take_heapsnapshot", "take_screenshot", "take_snapshot", "type_text",
-            "upload_file", "wait_for",
+            "upload_file", "wait_for", "peekaboo_locator_action",
         ]
         let classified = BrowserMCPUserActivationPolicy.alwaysForegroundToolNames
             .union(BrowserMCPUserActivationPolicy.conditionalToolNames)
@@ -18,7 +18,7 @@ struct BrowserMCPUserActivationPolicyTests {
 
         #expect(classified == registered)
         #expect(Set(BrowserMCPUserActivationPolicy.catalogToolNames(foregroundCapable: true)) == registered)
-        #expect(BrowserMCPUserActivationPolicy.alwaysForegroundToolNames.count == 16)
+        #expect(BrowserMCPUserActivationPolicy.alwaysForegroundToolNames.count == 17)
         #expect(BrowserMCPUserActivationPolicy.conditionalToolNames.count == 6)
         #expect(BrowserMCPUserActivationPolicy.sourceProvenBackgroundToolNames.count == 7)
     }

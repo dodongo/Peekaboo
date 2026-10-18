@@ -124,6 +124,11 @@ public actor PeekabooBridgeClient {
         self.inputCapabilities.browserConnectionHandoffEnabled
     }
 
+    /// Whether the negotiated host supports atomic browser root-session binding.
+    public var browserRootSessionBindingEnabled: Bool {
+        self.inputCapabilities.browserRootSessionBindingEnabled
+    }
+
     var producerBoundSnapshotReferencesEnabled: Bool {
         self.inputCapabilities.producerBoundSnapshotReferencesEnabled
     }
@@ -986,6 +991,9 @@ public actor PeekabooBridgeClient {
                 Self.supportsForegroundModifierClickSnapshotLease(handshake),
                 nativeBrowserConnectionBindingEnabled:
                 Self.supportsNativeBrowserConnectionBinding(handshake),
+                browserRootSessionBindingEnabled:
+                handshake.negotiatedVersion >= PeekabooBridgeConstants.browserRootSessionBindingVersion &&
+                    Self.supportsNativeBrowserConnectionBinding(handshake),
                 browserConnectionHandoffEnabled:
                 Self.supportsBrowserConnectionHandoff(handshake),
                 producerBoundSnapshotReferencesEnabled:
@@ -1590,6 +1598,7 @@ private struct PeekabooBridgeClientInputCapabilities: Sendable {
     var processGenerationBoundElementMutationsEnabled = false
     var foregroundModifierClickSnapshotLeaseEnabled = false
     var nativeBrowserConnectionBindingEnabled = false
+    var browserRootSessionBindingEnabled = false
     var browserConnectionHandoffEnabled = false
     var producerBoundSnapshotReferencesEnabled = false
     var scopedMenuBarActionsEnabled = false

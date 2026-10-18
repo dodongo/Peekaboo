@@ -1,3 +1,5 @@
+import Foundation
+
 /// Embedded in both the CLI and GUI host so npm-distributed providers receive the same audited patch.
 enum BrowserMCPProviderBootstrap {
     /// Keep this executable source covered by scripts/test-chrome-devtools-mcp-contract.mjs.
@@ -27,12 +29,88 @@ enum BrowserMCPProviderBootstrap {
     const target = pathToFileURL(join(root, 'build/src/ToolHandler.js')).href;
     const browserTarget = pathToFileURL(join(root, 'build/src/BrowserManager.js')).href;
     const transportTarget = pathToFileURL(join(root, 'build/src/third_party/index.js')).href;
+    const scriptTarget = pathToFileURL(join(root, 'build/src/tools/script.js')).href;
+    const toolsTarget = pathToFileURL(join(root, 'build/src/tools/tools.js')).href;
+    const snapshotTarget = pathToFileURL(join(root, 'build/src/tools/snapshot.js')).href;
+    const networkTarget = pathToFileURL(join(root, 'build/src/tools/network.js')).href;
+    const assetBundleSource = Buffer.from('__PEEKABOO_ASSET_BUNDLE_SOURCE__', 'base64').toString('utf8');
+    const pageWaitSource = Buffer.from('__PEEKABOO_PAGE_WAIT_SOURCE__', 'base64').toString('utf8');
+    const locatorSource = Buffer.from('__PEEKABOO_LOCATOR_SOURCE__', 'base64').toString('utf8');
     const loader = `
       import {createHash} from 'node:crypto';
-      let target, browserTarget, transportTarget;
-      export function initialize(data) { ({target, browserTarget, transportTarget} = data); }
+      let target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget, networkTarget;
+      let locatorSource, pageWaitSource, assetBundleSource;
+      export function initialize(data) {
+        ({target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget, networkTarget,
+          locatorSource, pageWaitSource, assetBundleSource} = data);
+      }
       export async function load(url, context, nextLoad) {
         const result = await nextLoad(url, context);
+        if (url === networkTarget) {
+          const source = Buffer.from(result.source);
+          if (createHash('sha256').update(source).digest('hex') !==
+              'cbb58eac8cc58a27abb4912d77a4a06e1f60d3ae3f7cd8a46346e5c7985ec0dd') {
+            throw new Error('Peekaboo: unaudited network tool');
+          }
+          const moduleURL = 'data:text/javascript,' + encodeURIComponent(assetBundleSource);
+          const imports = 'import {extendAssetBundle, extendWorkspaceExport} from ' + JSON.stringify(moduleURL) + ';\\n';
+          const updated = source.toString('utf8')
+            .replace('export const getNetworkRequest = definePageTool(() => ({',
+              'export const getNetworkRequest = definePageTool(() => extendWorkspaceExport(extendAssetBundle({')
+            .replace('}));\\n//# sourceMappingURL=network.js.map', '}, zod), zod));\\n//# sourceMappingURL=network.js.map');
+          return {...result, source: imports + updated};
+        }
+        if (url === snapshotTarget) {
+          const source = Buffer.from(result.source);
+          if (createHash('sha256').update(source).digest('hex') !==
+              '48a72eacfcf1bb6eb3fbf97b2d33a0d9bc4528fd2c655557a80e0ff55e2df073') {
+            throw new Error('Peekaboo: unaudited page wait tool');
+          }
+          const moduleURL = 'data:text/javascript,' + encodeURIComponent(pageWaitSource);
+          const imports = 'import {extendPageWait} from ' + JSON.stringify(moduleURL) + ';\\n';
+          const updated = source.toString('utf8')
+            .replace('export const waitFor = definePageTool(() => ({',
+              'export const waitFor = definePageTool(() => extendPageWait({')
+            .replace('}));\\n//# sourceMappingURL=snapshot.js.map', '}, zod));\\n//# sourceMappingURL=snapshot.js.map');
+          return {...result, source: imports + updated};
+        }
+        if (url === scriptTarget) {
+          const source = Buffer.from(result.source);
+          if (createHash('sha256').update(source).digest('hex') !==
+              'd5bfe13d873cc6ff1192cd27078e3d0c535bf1dae9aef21951b38f0e6025a386') {
+            throw new Error('Peekaboo: unaudited script evaluation tool');
+          }
+          const updated = source.toString('utf8')
+            .replace('waitForStableDom: zod',
+              'skipNavigationWait: zod.boolean().optional()' +
+              '.describe("Read-only scripts only; requires waitForStableDom=false"), waitForStableDom: zod')
+            .replace('filePath, waitForStableDom, } = request.params;',
+              'filePath, waitForStableDom, skipNavigationWait, } = request.params; ' +
+              'if (skipNavigationWait && waitForStableDom !== false) ' +
+              'throw new Error("skipNavigationWait requires waitForStableDom=false"); ' +
+              'if (skipNavigationWait && serviceWorkerId) ' +
+              'throw new Error("skipNavigationWait does not support service workers");')
+            .replace("{ handleDialog: dialogAction ?? 'accept', waitForStableDom });",
+              "{ handleDialog: dialogAction ?? 'accept', waitForStableDom, " +
+              "expectNavigationIn: skipNavigationWait ? 0 : undefined });");
+          return {...result, source: updated};
+        }
+        if (url === toolsTarget) {
+          const source = Buffer.from(result.source);
+          if (createHash('sha256').update(source).digest('hex') !==
+              '337ab947e5c3c53bc90bf8eb76aa16931c94305196e506fe560f1859cc3dc10d') {
+            throw new Error('Peekaboo: unaudited Chrome DevTools MCP tool registry');
+          }
+          const moduleURL = 'data:text/javascript,' + encodeURIComponent(locatorSource);
+          const imports = 'import {createLocatorTool} from ' + JSON.stringify(moduleURL) + ';\\n' +
+            "import {zod as peekabooZod} from '../third_party/index.js';\\n" +
+            "import {parseKey as peekabooParseKey} from '../utils/keyboard.js';\\n" +
+            "import {definePageTool as peekabooDefinePageTool} from './ToolDefinition.js';\\n";
+          const updated = source.toString('utf8').replace('const tools = [];',
+            'const tools = [peekabooDefinePageTool(() => ' +
+            'createLocatorTool({zod: peekabooZod, parseKey: peekabooParseKey}))(args)];');
+          return {...result, source: imports + updated};
+        }
         if (url === transportTarget) {
           const source = Buffer.from(result.source);
           if (createHash('sha256').update(source).digest('hex') !==
@@ -71,7 +149,10 @@ enum BrowserMCPProviderBootstrap {
         return {...result, source: source.toString('utf8').replace(before, after)};
       }
     `;
-    register('data:text/javascript,' + encodeURIComponent(loader), {data: {target, browserTarget, transportTarget}});
+    register('data:text/javascript,' + encodeURIComponent(loader), {
+      data: {target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget, networkTarget,
+        locatorSource, pageWaitSource, assetBundleSource},
+    });
     // Fail before starting the server (and before any browser connection) if the patch cannot load.
     await import(target);
     await import(browserTarget);
@@ -84,15 +165,15 @@ enum BrowserMCPProviderBootstrap {
       const server = await createServer.call(this, args, options);
       if (args.wsEndpoint) {
         let connection;
-        let browserConnection;
         server.server.registerTool('peekaboo_browser_connect', {
           description: 'Verify the exact persistent browser connection for the Peekaboo owner.',
           inputSchema: {},
         }, async () => {
           // Cache failure too: no tool invocation may silently reopen Chrome's approval UI.
-          connection ??= (async () => {
-            const browser = await options.browserManager.ensureBrowser();
-            browserConnection = browser;
+          connection ??= options.browserManager.ensureBrowser();
+          try {
+            const browser = await connection;
+            if (!browser.connected) throw new Error('Chrome disconnected; reconnect explicitly');
             const session = await browser.target().createCDPSession();
             try {
               const version = await session.send('Browser.getVersion');
@@ -102,21 +183,26 @@ enum BrowserMCPProviderBootstrap {
             } finally {
               await session.detach();
             }
-          })().catch(error => ({isError: true, content: [{type: 'text',
-            text: 'Chrome connection failed: ' + String(error.cause?.message ?? error.message).slice(0, 512),
-          }]}));
-          const result = await connection;
-          if (browserConnection && !browserConnection.connected) {
+          } catch (error) {
             return {isError: true, content: [{type: 'text',
-              text: 'Chrome connection failed: Chrome disconnected; reconnect explicitly',
+              text: 'Chrome connection failed: ' + String(error.cause?.message ?? error.message).slice(0, 512),
             }]};
           }
-          return result;
         });
       }
       return server;
     };
     process.argv = [process.execPath, entry, ...process.argv.slice(1)];
     await import(pathToFileURL(entry).href);
-    """#
+    """#.replacingOccurrences(
+        of: "__PEEKABOO_LOCATOR_SOURCE__",
+        with: Data((BrowserMCPInputTransfers.source + "\n" + BrowserMCPLocatorResolver.source).utf8)
+            .base64EncodedString())
+        .replacingOccurrences(
+            of: "__PEEKABOO_PAGE_WAIT_SOURCE__",
+            with: Data(BrowserMCPPageWait.source.utf8).base64EncodedString())
+        .replacingOccurrences(
+            of: "__PEEKABOO_ASSET_BUNDLE_SOURCE__",
+            with: Data((BrowserMCPWorkspaceExport.source + "\n" + BrowserMCPAssetBundle.source).utf8)
+                .base64EncodedString())
 }

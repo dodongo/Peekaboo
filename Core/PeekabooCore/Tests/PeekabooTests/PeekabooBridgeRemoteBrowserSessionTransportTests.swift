@@ -49,6 +49,7 @@ struct PeekabooBridgeRemoteBrowserSessionTransportTests {
         client.statusResponse = PeekabooBridgeBrowserStatus(
             isConnected: false,
             toolCount: 0,
+            providerFeatures: ["locator:role", "locator:refinements"],
             detectedBrowsers: [],
             connectionReceipt: Self.bridgeReceipt,
             error: "status cancelled",
@@ -59,6 +60,7 @@ struct PeekabooBridgeRemoteBrowserSessionTransportTests {
 
         let status = try await adapter.status(session: handle, channel: .stable)
 
+        #expect(status.providerFeatures == ["locator:role", "locator:refinements"])
         #expect(status.observation == .indeterminate)
         #expect(status.connectionReceipt == Self.runtimeReceipt)
         #expect(status.providerSessionEpoch?.transportID == epoch)

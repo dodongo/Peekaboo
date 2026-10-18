@@ -189,6 +189,12 @@ extension PeekabooBridgeServer {
             disposition: PeekabooBridgeHandledResponse.Mutation.TargetDisposition)
     {
         let expectedReceipt = try Self.validatedBrowserExecutionReceipt(payload)
+        if payload.expectedProviderSessionEpoch != nil {
+            // The service checks both receipt and epoch under its execution gate.
+            // A separate status round trip would add latency and still leave a race.
+            try Self.validateBrowserSessionRequest(.browserExecute(payload))
+            return try (expectedReceipt, self.browserTargetDisposition(expectedReceipt))
+        }
         let status: PeekabooBridgeBrowserStatus
         do {
             status = try await self.services.browserStatus(channel: payload.channel)

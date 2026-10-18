@@ -40,6 +40,9 @@ extension PeekabooBridgeRequest {
     }
 
     var minimumNegotiatedProtocolVersion: PeekabooBridgeProtocolVersion? {
+        if self.requiresBrowserRootSessionBinding {
+            return PeekabooBridgeConstants.browserRootSessionBindingVersion
+        }
         if self.requiresExactFileDialogExecution {
             return PeekabooBridgeConstants.exactFileDialogExecutionVersion
         }
@@ -159,6 +162,11 @@ extension PeekabooBridgeRequest {
         }
     }
 
+    var requiresBrowserRootSessionBinding: Bool {
+        guard case let .browserExecute(payload) = self.unwrappedOperationRequest else { return false }
+        return payload.sessionID == nil && payload.expectedProviderSessionEpoch != nil
+    }
+
     var requiresBrowserConnectionHandoff: Bool {
         switch self.unwrappedOperationRequest {
         case let .browserConnect(payload):
@@ -168,7 +176,7 @@ extension PeekabooBridgeRequest {
         case let .browserStatus(payload):
             payload.sessionID != nil || payload.requestsHandoff || payload.browserURL != nil
         case let .browserExecute(payload):
-            payload.sessionID != nil || payload.expectedProviderSessionEpoch != nil || payload.elementPreflight != nil
+            payload.sessionID != nil || payload.elementPreflight != nil
         default:
             false
         }

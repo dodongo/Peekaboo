@@ -1102,6 +1102,23 @@ public final class PeekabooBridgeServer {
         if case let .browserExecute(payload) = request {
             _ = try Self.validatedBrowserExecutionReceipt(payload)
         }
+        if request.requiresBrowserRootSessionBinding {
+            let session = PeekabooBridgeRequestContext.negotiatedSessionCapabilities
+            guard PeekabooBridgeRequestContext.usesAttestedOperationResultSemantics,
+                  session?.protocolVersion ?? .init(major: 0, minor: 0) >=
+                  PeekabooBridgeConstants.browserRootSessionBindingVersion,
+                  session?.nativeBrowserConnectionBinding == true
+            else {
+                throw PeekabooBridgeErrorEnvelope(
+                    code: .operationNotSupported,
+                    actionFailure: .preDispatchRefusal(
+                        route: .bridge,
+                        reason: .runtimeIncompatible,
+                        message: "Atomic browser root binding requires an attested compatible Bridge session.",
+                        hint: "Update and relaunch the selected Peekaboo host before starting a browser stream."))
+            }
+            try Self.validateBrowserSessionRequest(request)
+        }
         if request.requiresBrowserConnectionHandoff {
             let session = PeekabooBridgeRequestContext.negotiatedSessionCapabilities
             guard PeekabooBridgeRequestContext.usesAttestedOperationResultSemantics,

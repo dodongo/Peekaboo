@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { devtoolsFixture } from '../tests/fixtures/devtools-websocket.mjs';
+import { providerBootstrapSource } from './browser-provider-source.mjs';
 
-const swift = readFileSync(new URL('../Core/PeekabooCore/Sources/PeekabooAgentRuntime/Browser/BrowserMCPProviderBootstrap.swift', import.meta.url), 'utf8');
-const bootstrap = swift.match(/static let source = #"""\n([\s\S]*?)\n    """#/)[1].replace(/^    /gm, '');
+const bootstrap = providerBootstrapSource();
 process.env.PATH = fileURLToPath(new URL('../node_modules/.bin', import.meta.url)) + delimiter + process.env.PATH;
 await import('data:text/javascript,' + encodeURIComponent(bootstrap.split('process.argv =')[0]));
 const { McpServer } = await import('../node_modules/chrome-devtools-mcp/build/src/index.js');
@@ -35,12 +34,18 @@ try {
   });
   const browser = await browserManager.ensureBrowser();
   assert.equal(await browser.version(), 'Chrome/152.0');
+  const probes = fixture.commands.filter(command => command === 'Browser.getVersion').length;
   assert.deepEqual(await tool.handler({}), result);
+  assert.equal(fixture.commands.filter(command => command === 'Browser.getVersion').length, probes + 1,
+    'each verification must probe the live connection, not return a cached success');
   assert.equal(fixture.attaches, 1, 'verification and ordinary provider operations must share one socket');
   assert.equal(fixture.requests, 0, 'approval-mode discovery must not require /json/version');
   const disconnected = once(browser, 'disconnected');
   fixture.drop();
   await disconnected;
+  const stale = await tool.handler({});
+  assert.equal(stale.isError, true, 'verification must reject a dropped socket even while the provider lives');
+  assert.match(stale.content[0].text, /disconnected/);
   await assert.rejects(browserManager.ensureBrowser(), /reconnect explicitly/);
   assert.equal(fixture.attaches, 1, 'a disconnected provider must not ask Chrome for another approval');
 } finally {

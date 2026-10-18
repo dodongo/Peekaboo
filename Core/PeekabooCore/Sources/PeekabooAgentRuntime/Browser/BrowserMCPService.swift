@@ -39,6 +39,7 @@ public struct BrowserMCPElementPreflight: Equatable, Sendable {
 public struct BrowserMCPStatus: Sendable {
     public let isConnected: Bool
     public let toolCount: Int
+    public let providerFeatures: [String]?
     public let detectedBrowsers: [DetectedBrowser]
     public let connectionReceipt: BrowserMCPConnectionReceipt?
     public let providerSessionEpoch: BrowserMCPProviderSessionEpoch?
@@ -48,6 +49,7 @@ public struct BrowserMCPStatus: Sendable {
     public init(
         isConnected: Bool,
         toolCount: Int,
+        providerFeatures: [String]? = nil,
         detectedBrowsers: [DetectedBrowser],
         connectionReceipt: BrowserMCPConnectionReceipt? = nil,
         providerSessionEpoch: BrowserMCPProviderSessionEpoch? = nil,
@@ -56,6 +58,7 @@ public struct BrowserMCPStatus: Sendable {
     {
         self.isConnected = isConnected
         self.toolCount = toolCount
+        self.providerFeatures = providerFeatures
         self.detectedBrowsers = detectedBrowsers
         self.connectionReceipt = connectionReceipt
         self.providerSessionEpoch = providerSessionEpoch
@@ -248,9 +251,23 @@ public protocol BrowserMCPClientProviding: AnyObject, Sendable {
         _ calls: [BrowserMCPMappedCall],
         channel: BrowserMCPChannel?,
         expectedConnectionReceipt: BrowserMCPConnectionReceipt) async throws -> BrowserMCPExecutionResult
+    @MainActor
+    func executeSequence(
+        _ calls: [BrowserMCPMappedCall],
+        channel: BrowserMCPChannel?,
+        expectedSessionBinding: BrowserMCPExecutionSessionBinding) async throws -> BrowserMCPExecutionResult
 }
 
 extension BrowserMCPClientProviding {
+    @MainActor
+    public func executeSequence(
+        _: [BrowserMCPMappedCall],
+        channel _: BrowserMCPChannel?,
+        expectedSessionBinding _: BrowserMCPExecutionSessionBinding) async throws -> BrowserMCPExecutionResult
+    {
+        throw BrowserMCPConnectionError.receiptBindingUnsupported
+    }
+
     public var supportsNativeBrowserConnectionBinding: Bool {
         false
     }
@@ -990,6 +1007,7 @@ public final class BrowserMCPService: BrowserMCPClientProviding, BrowserMCPActio
             outcome: outcome)
     }
 
+
     @MainActor
     public func executeSequence(
         _ calls: [BrowserMCPMappedCall],
@@ -1001,6 +1019,28 @@ public final class BrowserMCPService: BrowserMCPClientProviding, BrowserMCPActio
                 calls,
                 channel: channel,
                 expectedConnectionReceipt: expectedConnectionReceipt)
+            if result.response.isError || result.actionFailure != nil {
+                await self.reconcileTargetOwnershipAfterExecutionFailure()
+            }
+            return result
+        } catch {
+            await self.reconcileTargetOwnershipAfterExecutionFailure()
+            throw error
+        }
+    }
+
+    @MainActor
+    public func executeSequence(
+        _ calls: [BrowserMCPMappedCall],
+        channel: BrowserMCPChannel?,
+        expectedSessionBinding: BrowserMCPExecutionSessionBinding) async throws -> BrowserMCPExecutionResult
+    {
+        do {
+            let result = try await self.resolvedSessionManager().executeSequence(
+                calls,
+                channel: channel,
+                expectedSessionBinding: expectedSessionBinding,
+                elementPreflight: nil)
             if result.response.isError || result.actionFailure != nil {
                 await self.reconcileTargetOwnershipAfterExecutionFailure()
             }
@@ -1135,7 +1175,7 @@ public final class BrowserMCPService: BrowserMCPClientProviding, BrowserMCPActio
 
         return MCPServerConfig(
             transport: "stdio",
-            command: "npx",
+            command: self.npxCommand(environment: ProcessInfo.processInfo.environment),
             args: args,
             enabled: true,
             timeout: target.requestTimeout,
@@ -1154,6 +1194,9 @@ public final class BrowserMCPService: BrowserMCPClientProviding, BrowserMCPActio
         "--",
         "--page-id-routing",
         "--experimentalStructuredContent",
+        // The provider process runs with TMPDIR pinned to a private upload workspace, so its default
+        // temp-directory-only file policy would reject every caller-chosen output path.
+        "--allow-unrestricted-paths",
     ]
 
     static func chromeDevToolsConfig(browserURL: String, headless _: Bool) -> MCPServerConfig {
@@ -1163,12 +1206,28 @@ public final class BrowserMCPService: BrowserMCPClientProviding, BrowserMCPActio
         args.append("--no-performance-crux")
         return MCPServerConfig(
             transport: "stdio",
-            command: "npx",
+            command: self.npxCommand(environment: ProcessInfo.processInfo.environment),
             args: args,
             enabled: true,
             timeout: 30,
             autoReconnect: false,
             description: "Chrome DevTools automation for \(browserURL)")
+    }
+
+    /// Resolves npx for GUI launches, which inherit launchd's minimal PATH.
+    static func npxCommand(environment: [String: String]) -> String {
+        if let override = environment["PEEKABOO_NPX_PATH"], !override.isEmpty {
+            return override
+        }
+        let candidates = [
+            "\(NSHomeDirectory())/.local/share/mise/shims/npx",
+            "/opt/homebrew/bin/npx",
+            "/usr/local/bin/npx",
+        ]
+        if let found = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
+            return found
+        }
+        return "npx"
     }
 
     public static func detectRunningBrowsers(channel: BrowserMCPChannel? = nil) -> [DetectedBrowser] {

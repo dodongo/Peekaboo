@@ -369,6 +369,16 @@ extension PeekabooBridgeClient {
     private func receiptBoundBrowserRequest(
         _ request: PeekabooBridgeBrowserExecuteRequest) async throws -> PeekabooBridgeBrowserExecuteRequest
     {
+        if request.sessionID == nil, request.expectedProviderSessionEpoch != nil,
+           !self.browserRootSessionBindingEnabled
+        {
+            throw DesktopActionFailure.preDispatchRefusal(
+                route: .bridge,
+                reason: .runtimeIncompatible,
+                message: "Atomic browser stream binding requires Bridge protocol " +
+                    "\(PeekabooBridgeConstants.browserRootSessionBindingVersion).",
+                hint: "Update the runtime host before using this execution path.")
+        }
         if let expectedReceipt = request.expectedConnectionReceipt {
             guard expectedReceipt.isCanonicalExecutionTarget,
                   request.channel == nil || request.channel == expectedReceipt.channel
@@ -476,7 +486,7 @@ extension PeekabooBridgeClient {
                 message: "Attested browser read response omitted its connection receipt.",
                 hint: "Update and relaunch the Peekaboo Bridge host before retrying.")
         }
-        if request.sessionID != nil,
+        if request.expectedProviderSessionEpoch != nil,
            !response.isError,
            response.providerSessionEpoch != request.expectedProviderSessionEpoch
         {

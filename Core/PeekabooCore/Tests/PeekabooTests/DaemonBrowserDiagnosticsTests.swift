@@ -20,6 +20,7 @@ struct DaemonBrowserDiagnosticsTests {
         let expected = PeekabooBridgeBrowserStatus(
             isConnected: connected,
             toolCount: connected ? 29 : 0,
+            providerFeatures: connected ? ["locator:role"] : nil,
             detectedBrowsers: discovered,
             connectionReceipt: receipt,
             providerSessionEpoch: epoch,
@@ -51,6 +52,7 @@ struct DaemonBrowserDiagnosticsTests {
         }
         #expect(cached.observation == .indeterminate)
         #expect(cached.error?.contains("Cached browser diagnostics") == true)
+        #expect(cached.providerFeatures == expected.providerFeatures)
         #expect(cached.isConnected == expected.isConnected)
         #expect(cached.toolCount == expected.toolCount)
         #expect(cached.detectedBrowsers == expected.detectedBrowsers)
