@@ -7,7 +7,7 @@ read_when:
 
 # `peekaboo drag`
 
-`drag` defaults to one bounded, linear background gesture inside the exact window owned by an explicit fresh `--snapshot`. It routes primer, button-down, drag samples, and button-up to that window without moving the physical cursor, activating an app, or showing an overlay. Coordinates are global logical screen points; both endpoints must remain inside the captured window.
+`drag` defaults to one bounded, linear background gesture inside the exact window owned by an explicit fresh `--snapshot`. It routes primer, button-down, drag samples, and button-up to that window without moving the physical cursor, activating an app, or showing an overlay. Background coordinates are relative to the captured window's top-left corner, as with `click --at`; both endpoints must remain inside that window. Foreground coordinates are global logical screen points.
 
 Cross-window/application drops, modifiers, human movement, and shared physical cursor input require explicit `--foreground` consent. A completed dispatch is **unverified and retry-unsafe**: mouse-up is not proof that the application performed the requested drop. Observe the exact window before another action.
 
@@ -40,7 +40,7 @@ Cross-window/application drops, modifiers, human movement, and shared physical c
 
 ## Examples
 ```bash
-# Background drag inside one captured exact window (global logical coordinates)
+# Background drag inside one captured exact window (window-relative coordinates)
 peekaboo drag --from "120,180" --to "300,180" --snapshot "$SNAPSHOT_ID"
 
 # Drag a file element into the Trash

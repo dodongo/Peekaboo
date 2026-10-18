@@ -112,8 +112,7 @@ enum InteractionTargetPointResolver {
         )
     }
 
-    private static func parsedCoordinateResolution(_ coordinateString: String) throws
-    -> InteractionTargetPointResolution {
+    static func parsedCoordinates(_ coordinateString: String) throws -> CGPoint {
         let components = coordinateString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         guard components.count == 2,
               let x = Double(components[0]),
@@ -121,11 +120,12 @@ enum InteractionTargetPointResolver {
         else {
             throw Commander.ValidationError("Invalid coordinates format: '\(coordinateString)'. Expected 'x,y'")
         }
+        return CGPoint(x: x, y: y)
+    }
 
-        return self.coordinate(
-            CGPoint(x: x, y: y),
-            source: .coordinates
-        )
+    private static func parsedCoordinateResolution(_ coordinateString: String) throws
+    -> InteractionTargetPointResolution {
+        try self.coordinate(self.parsedCoordinates(coordinateString), source: .coordinates)
     }
 
     private static func resolve(

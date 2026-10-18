@@ -357,6 +357,33 @@ struct DragCommand: ActionOutputFormattable, ErrorHandlingCommand, OutputFormatt
                 snapshots: self.services.snapshots
             )
         }
+        if !self.focusOptions.foreground, let coords {
+            guard let snapshotId else { throw ValidationError("Background drag requires an explicit snapshot") }
+            let input = try InteractionTargetPointResolver.parsedCoordinates(coords)
+            let resolution = try await InteractionCoordinateResolver.resolveBackgroundSnapshotCoordinates(
+                input,
+                snapshotId: snapshotId,
+                target: self.target,
+                services: self.services,
+                options: .init(
+                    forceGlobal: false,
+                    referenceMessage: "Background drag requires one explicit fresh --snapshot ID",
+                    operation: "drag"
+                )
+            )
+            return InteractionTargetPointResolution(
+                point: resolution.screenPoint,
+                diagnostics: InteractionTargetPointDiagnostics(
+                    source: InteractionTargetPointSource.coordinates.rawValue,
+                    elementId: nil,
+                    snapshotId: snapshotId,
+                    original: InteractionPoint(input),
+                    resolved: InteractionPoint(resolution.screenPoint),
+                    windowAdjustment: nil,
+                    coordinate: resolution.diagnostics
+                )
+            )
+        }
         return try await InteractionTargetPointResolver.elementOrCoordinateResolution(
             InteractionTargetPointRequest(
                 elementId: elementId,
@@ -399,7 +426,8 @@ extension DragCommand: ParsableCommand {
                   peekaboo drag --from "100,200" --to "400,300" --button right --foreground
 
                 Background drag requires a fresh --snapshot and a bounded linear path inside that one window.
-                Coordinates are global logical points. Cross-window/app drops, modifiers, human profiles,
+                Background coordinates are relative to the snapshot window; foreground coordinates are
+                global logical points. Cross-window/app drops, modifiers, human profiles,
                 and shared physical cursor input require explicit --foreground.
                 """,
                 version: "2.0.0",

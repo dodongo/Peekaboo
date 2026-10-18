@@ -14,12 +14,23 @@ struct GlobalPointerActionResultCommandTests {
         missingElement: String?
     ) async throws {
         let automation = ExactDragStubAutomationService()
-        let context = TestServicesFactory.makeAutomationTestContext(automation: automation)
-        let snapshotID = try await context.snapshots.createSnapshot()
-        let bounds = CGRect(x: 0, y: 0, width: 300, height: 200)
+        let bounds = CGRect(x: 100, y: 50, width: 300, height: 200)
         let identity = WindowMutationIdentity(
             windowID: 71, ownerProcessIdentifier: 42, ownerProcessStartIdentity: 9001, capturedBounds: bounds
         )
+        let application = ServiceApplicationInfo(
+            processIdentifier: 42,
+            processStartIdentity: 9001,
+            bundleIdentifier: "com.example.Canvas",
+            name: "Canvas"
+        )
+        let window = ServiceWindowInfo(windowID: 71, title: "Canvas", bounds: bounds, mutationIdentity: identity)
+        let context = TestServicesFactory.makeAutomationTestContext(
+            automation: automation,
+            applications: StubApplicationService(applications: [application]),
+            windows: StubWindowService(windowsByApp: ["Canvas": [window]])
+        )
+        let snapshotID = try await context.snapshots.createSnapshot()
         try await context.snapshots.storeDetectionResult(snapshotId: snapshotID, result: .init(
             snapshotId: snapshotID,
             screenshotPath: "/tmp/synthetic-drag.png",
@@ -67,6 +78,8 @@ struct GlobalPointerActionResultCommandTests {
         #expect(second.exitStatus != 0)
         #expect((secondJSON["outcome"] as? [String: Any])?["mutation_dispatched"] as? Bool == false)
         #expect(automation.exactDragCalls.count == 1)
+        #expect(automation.exactDragCalls.first?.from == CGPoint(x: 110, y: 70))
+        #expect(automation.exactDragCalls.first?.to == CGPoint(x: 130, y: 90))
         #expect(automation.dragCalls.isEmpty)
         #expect(automation.moveMouseCalls.isEmpty)
     }
