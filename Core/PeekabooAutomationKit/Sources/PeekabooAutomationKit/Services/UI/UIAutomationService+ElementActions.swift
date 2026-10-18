@@ -147,9 +147,12 @@ extension UIAutomationService: ElementActionAutomationServiceProtocol {
                     valueVerification = action.valueVerification
                     return action
                 } catch let error as ActionInputError where error.isUnsupportedValueMutation {
-                    throw PeekabooError.invalidInput(Self.unsupportedSetValueMessage(
-                        target: resolved.description,
-                        reason: error.localizedDescription))
+                    throw DesktopActionFailure.preDispatchRefusal(
+                        reason: .operationUnsupported,
+                        message: Self.unsupportedSetValueMessage(
+                            target: resolved.description,
+                            reason: error.localizedDescription),
+                        hint: "The element kept its value; use another command such as type.")
                 }
             },
             synthesis: DesktopOperationPlan.SynthesisRoute {
@@ -261,10 +264,13 @@ extension UIAutomationService: ElementActionAutomationServiceProtocol {
                         element: resolved.element,
                         actionName: actionName)
                 } catch let error as ActionInputError where error.isUnsupportedActionInvocation {
-                    throw PeekabooError.invalidInput(Self.unsupportedActionMessage(
-                        actionName: actionName,
-                        target: resolved.description,
-                        advertisedActions: resolved.element.actionNames))
+                    throw DesktopActionFailure.preDispatchRefusal(
+                        reason: .operationUnsupported,
+                        message: Self.unsupportedActionMessage(
+                            actionName: actionName,
+                            target: resolved.description,
+                            advertisedActions: resolved.element.actionNames),
+                        hint: "The app rejected the action and nothing changed; use another command such as scroll.")
                 }
             },
             synthesis: DesktopOperationPlan.SynthesisRoute {
