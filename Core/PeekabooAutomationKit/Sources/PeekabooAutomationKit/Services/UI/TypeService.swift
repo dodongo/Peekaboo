@@ -118,6 +118,8 @@ public final class TypeService {
         -> Result<ExactWindowFocusSnapshot, FocusedElementReceiptError>
     private let exactFocusedValueRunner: TypeServiceExactFocusedValueRunner
     private let processStartIdentityProvider: @Sendable (pid_t) -> UInt64?
+    private let foregroundProcessIdentifier: @MainActor () -> pid_t?
+    private let foregroundFocusReader: @Sendable (pid_t) -> ExactWindowFocusSnapshot?
     private let effectConfirmationTiming: ExactLiteralTypingEffectConfirmationTiming
 
     public convenience init(
@@ -162,6 +164,8 @@ public final class TypeService {
             exactFocusedElementValueReader: exactFocusedElementValueReader,
             exactFocusedValueRunner: exactFocusedValueRunner,
             processStartIdentityProvider: processStartIdentityProvider,
+            foregroundProcessIdentifier: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+            foregroundFocusReader: DetachedExactWindowFocusReader.read(processIdentifier:),
             desktopOperationExecutor: desktopOperationExecutor,
             operationFinalizer: operationFinalizer)
     }
@@ -204,6 +208,8 @@ public final class TypeService {
             TypeService.runExactFocusedValueObservation,
         processStartIdentityProvider: @escaping @Sendable (pid_t) -> UInt64? =
             SystemIdentityResolver.processStartIdentity,
+        foregroundProcessIdentifier: @escaping @MainActor () -> pid_t? = { nil },
+        foregroundFocusReader: @escaping @Sendable (pid_t) -> ExactWindowFocusSnapshot? = { _ in nil },
         desktopOperationExecutor: DesktopOperationExecutor = DesktopOperationExecutor(),
         operationFinalizer: @escaping @MainActor () -> Void = {},
         pixelFocusReceiptPlanner: (@MainActor @Sendable (String) async throws -> SnapshotTargetReceiptPlan)? = nil,
@@ -242,6 +248,8 @@ public final class TypeService {
         self.exactFocusedElementValueReader = exactFocusedElementValueReader
         self.exactFocusedValueRunner = exactFocusedValueRunner
         self.processStartIdentityProvider = processStartIdentityProvider
+        self.foregroundProcessIdentifier = foregroundProcessIdentifier
+        self.foregroundFocusReader = foregroundFocusReader
         self.desktopOperationExecutor = desktopOperationExecutor
         self.operationFinalizer = operationFinalizer
         self.pixelFocusReceiptPlanner = pixelFocusReceiptPlanner ?? { snapshotID in
@@ -533,7 +541,7 @@ public final class TypeService {
         var payloadSummary: TypeActionPayloadSummary?
         var summary: TypeActionExecutionSummary?
         let targetProcessIdentifier = automationTarget.processIdentifier
-        let effectConfirmation = automationTarget.exactWindow.flatMap {
+        var effectConfirmation = automationTarget.exactWindow.flatMap {
             ExactLiteralTypingEffectConfirmation.plan(actions: actions, target: $0)
         }
         var confirmationBaseline: ExactWindowFocusSnapshot?
@@ -574,9 +582,13 @@ public final class TypeService {
             prepare: {
                 bundleIdentifier = targetProcessIdentifier.flatMap(self.targetBundleIdentifier)
                 strategy = self.actionArrayStrategy(for: automationTarget, bundleIdentifier: bundleIdentifier)
-                confirmationBaseline = await self.prepareEffectConfirmationBaseline(
-                    effectConfirmation,
-                    lanePreparation: lanePreparation)
+                await lanePreparation()
+                if automationTarget == .foreground {
+                    effectConfirmation = await self.foregroundEffectConfirmation(actions: actions)
+                }
+                if let effectConfirmation {
+                    confirmationBaseline = await self.exactFocusedValueSnapshot(for: effectConfirmation)
+                }
             },
             routing: {
                 DesktopOperationPlan.Routing(strategy: strategy, bundleIdentifier: bundleIdentifier)
@@ -1422,6 +1434,27 @@ extension TypeService {
         await lanePreparation()
         guard let confirmation else { return nil }
         return await self.exactFocusedValueSnapshot(for: confirmation)
+    }
+
+    private func foregroundEffectConfirmation(actions: [TypeAction]) async -> ExactLiteralTypingEffectConfirmation? {
+        guard let processIdentifier = self.foregroundProcessIdentifier(),
+              let processStartIdentity = self.processStartIdentityProvider(processIdentifier)
+        else { return nil }
+        let reader = self.foregroundFocusReader
+        let observation = await self.exactFocusedValueRunner(
+            processIdentifier,
+            processStartIdentity,
+            .milliseconds(200))
+        {
+            reader(processIdentifier).map { .success($0) } ?? .failure(.noFocusedElement)
+        }
+        guard case let .success(focus) = observation,
+              focus.processIdentifier == processIdentifier
+        else { return nil }
+        return ExactLiteralTypingEffectConfirmation.plan(
+            actions: actions,
+            foregroundFocus: focus,
+            processStartIdentity: processStartIdentity)
     }
 
     func exactFocusedValueSnapshot(

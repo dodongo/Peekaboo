@@ -49,6 +49,7 @@ struct ExactLiteralTypingEffectConfirmation {
     let focusedElement: FocusedElementIdentity
     let processStartIdentity: UInt64
     private let windowBounds: CGRect
+    private let deliveryMode: DesktopActionOutcome.Delivery.Mode
     private let literal: String
     private let clearsFirst: Bool
 
@@ -56,8 +57,48 @@ struct ExactLiteralTypingEffectConfirmation {
         actions: [TypeAction],
         target: UIAutomationTarget.ExactWindow) -> Self?
     {
-        guard let focusedElement = target.focusedElement,
-              focusedElement.role != "AXSecureTextField",
+        guard let focusedElement = target.focusedElement else { return nil }
+        return self.plan(
+            actions: actions,
+            focusedElement: focusedElement,
+            processStartIdentity: target.identity.ownerProcessStartIdentity,
+            windowBounds: target.bounds,
+            deliveryMode: .background)
+    }
+
+    /// Plans confirmation of foreground typing into the element that holds keyboard focus before dispatch.
+    static func plan(
+        actions: [TypeAction],
+        foregroundFocus focus: ExactWindowFocusSnapshot,
+        processStartIdentity: UInt64) -> Self?
+    {
+        guard focus.subrole != "AXSecureTextField",
+              let role = focus.role,
+              let windowID = focus.windowID,
+              !focus.frame.isEmpty
+        else { return nil }
+        return self.plan(
+            actions: actions,
+            focusedElement: FocusedElementIdentity(
+                processIdentifier: focus.processIdentifier,
+                windowID: windowID,
+                role: role,
+                title: focus.title,
+                identifier: focus.identifier,
+                frame: focus.frame),
+            processStartIdentity: processStartIdentity,
+            windowBounds: focus.frame,
+            deliveryMode: .foreground)
+    }
+
+    private static func plan(
+        actions: [TypeAction],
+        focusedElement: FocusedElementIdentity,
+        processStartIdentity: UInt64,
+        windowBounds: CGRect,
+        deliveryMode: DesktopActionOutcome.Delivery.Mode) -> Self?
+    {
+        guard focusedElement.role != "AXSecureTextField",
               TypeAction.hasDeterministicReplacementValue(actions)
         else { return nil }
 
@@ -74,8 +115,9 @@ struct ExactLiteralTypingEffectConfirmation {
         }
         return Self(
             focusedElement: focusedElement,
-            processStartIdentity: target.identity.ownerProcessStartIdentity,
-            windowBounds: target.bounds,
+            processStartIdentity: processStartIdentity,
+            windowBounds: windowBounds,
+            deliveryMode: deliveryMode,
             literal: literal,
             clearsFirst: clearsFirst)
     }
@@ -126,7 +168,7 @@ struct ExactLiteralTypingEffectConfirmation {
     {
         guard let delivery = outcome.delivery,
               outcome.state == .dispatchedUnverified,
-              Self.supportsExactBackgroundDelivery(delivery),
+              self.supportsConfirmation(of: delivery),
               let expectedValue = self.expectedValue(after: previousValue),
               !previousValue.value.utf8.elementsEqual(expectedValue.utf8),
               observedValue.utf8.elementsEqual(expectedValue.utf8)
@@ -137,10 +179,14 @@ struct ExactLiteralTypingEffectConfirmation {
             unitCount: outcome.dispatchState.unitCount)
     }
 
-    private static func supportsExactBackgroundDelivery(_ delivery: DesktopActionOutcome.Delivery) -> Bool {
-        guard delivery.mode == .background else { return false }
+    private func supportsConfirmation(of delivery: DesktopActionOutcome.Delivery) -> Bool {
+        guard delivery.mode == self.deliveryMode else { return false }
         switch delivery.mechanism {
-        case .windowTargetedEvents, .accessibilityValue, .composite:
+        case .windowTargetedEvents:
+            return self.deliveryMode == .background
+        case .globalEvents:
+            return self.deliveryMode == .foreground
+        case .accessibilityValue, .composite:
             return true
         default:
             return false

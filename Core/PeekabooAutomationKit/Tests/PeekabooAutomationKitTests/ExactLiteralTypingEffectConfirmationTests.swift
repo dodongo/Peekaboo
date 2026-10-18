@@ -237,6 +237,98 @@ struct ExactLiteralTypingEffectConfirmationTests {
     }
 
     @Test
+    func `foreground plan confirms only foreground delivery into the pre-dispatch focus`() throws {
+        let confirmation = try #require(ExactLiteralTypingEffectConfirmation.plan(
+            actions: [.text("safe")],
+            foregroundFocus: Self.foregroundFocus(),
+            processStartIdentity: 33))
+        let foreground = DesktopActionOutcome.dispatchedUnverified(
+            delivery: .init(mechanism: .globalEvents, mode: .foreground),
+            evidence: .deliveryAccepted)
+        let background = DesktopActionOutcome.dispatchedUnverified(
+            delivery: .init(mechanism: .windowTargetedEvents, mode: .background),
+            evidence: .deliveryAccepted)
+
+        #expect(confirmation.confirmedOutcome(
+            from: foreground,
+            previousValue: .init(value: ""),
+            observedValue: "safe").state == .confirmedChange)
+        #expect(confirmation.confirmedOutcome(
+            from: background,
+            previousValue: .init(value: ""),
+            observedValue: "safe") == background)
+        #expect(confirmation.readableValue(from: .success(Self.foregroundFocus(value: "safe"))) == "safe")
+    }
+
+    @Test
+    func `foreground plan needs a readable non-secure focus with a window`() {
+        #expect(ExactLiteralTypingEffectConfirmation.plan(
+            actions: [.text("secret")],
+            foregroundFocus: Self.foregroundFocus(subrole: "AXSecureTextField"),
+            processStartIdentity: 33) == nil)
+        #expect(ExactLiteralTypingEffectConfirmation.plan(
+            actions: [.text("safe")],
+            foregroundFocus: Self.foregroundFocus(windowID: nil),
+            processStartIdentity: 33) == nil)
+        #expect(ExactLiteralTypingEffectConfirmation.plan(
+            actions: [.text("safe")],
+            foregroundFocus: Self.foregroundFocus(role: nil),
+            processStartIdentity: 33) == nil)
+        #expect(ExactLiteralTypingEffectConfirmation.plan(
+            actions: [.text("safe")],
+            foregroundFocus: Self.foregroundFocus(frame: .zero),
+            processStartIdentity: 33) == nil)
+    }
+
+    @Test
+    @MainActor
+    func `foreground typing confirms the change in the pre-dispatch focused element`() async throws {
+        let valueReads = TypingLockedCounter()
+        let service = TypeService(
+            inputPolicy: UIInputPolicy(defaultStrategy: .synthOnly),
+            syntheticInputDriver: ClickRecordingSyntheticInputDriver(),
+            randomSource: SystemTypingCadenceRandomSource(),
+            focusedElementSecurityProbe: { _ in false },
+            exactFocusedElementValueReader: { focusedElement, _ in
+                .success(Self.focusSnapshot(focusedElement, value: valueReads.next() == 1 ? "" : "ab"))
+            },
+            processStartIdentityProvider: { _ in 33 },
+            foregroundProcessIdentifier: { 333 },
+            foregroundFocusReader: { _ in Self.foregroundFocus() })
+
+        let summary = try await service.typeActionsTrackingSecureInput(
+            [.text("ab")],
+            cadence: .fixed(milliseconds: 0),
+            snapshotId: nil,
+            automationTarget: .foreground)
+
+        #expect(valueReads.value == 2)
+        #expect(summary.executionResult.outcome.state == .confirmedChange)
+        #expect(summary.executionResult.outcome.delivery == .init(mechanism: .globalEvents, mode: .foreground))
+    }
+
+    @Test
+    @MainActor
+    func `foreground typing without a readable focus stays dispatched`() async throws {
+        let service = TypeService(
+            inputPolicy: UIInputPolicy(defaultStrategy: .synthOnly),
+            syntheticInputDriver: ClickRecordingSyntheticInputDriver(),
+            randomSource: SystemTypingCadenceRandomSource(),
+            focusedElementSecurityProbe: { _ in false },
+            processStartIdentityProvider: { _ in 33 },
+            foregroundProcessIdentifier: { 333 },
+            foregroundFocusReader: { _ in nil })
+
+        let summary = try await service.typeActionsTrackingSecureInput(
+            [.text("ab")],
+            cadence: .fixed(milliseconds: 0),
+            snapshotId: nil,
+            automationTarget: .foreground)
+
+        #expect(summary.executionResult.outcome.state == .dispatchedUnverified)
+    }
+
+    @Test
     func `already equal value never proves that typing changed the field`() throws {
         let confirmation = try #require(ExactLiteralTypingEffectConfirmation.plan(
             actions: [.clear, .text("safe")],
@@ -854,6 +946,24 @@ struct ExactLiteralTypingEffectConfirmationTests {
             exactFocusedElementValueReader: valueReader,
             processStartIdentityProvider: processStartIdentityProvider,
             effectConfirmationTiming: timing)
+    }
+
+    private static func foregroundFocus(
+        windowID: Int? = 42,
+        frame: CGRect = CGRect(x: 20, y: 20, width: 200, height: 30),
+        role: String? = "AXTextField",
+        subrole: String? = nil,
+        value: String = "") -> ExactWindowFocusSnapshot
+    {
+        ExactWindowFocusSnapshot(
+            processIdentifier: 333,
+            windowID: windowID,
+            frame: frame,
+            role: role,
+            subrole: subrole,
+            identifier: "editor",
+            value: value,
+            nativeElement: RetainedFocusElement(element: AXUIElementCreateApplication(333)))
     }
 
     private static func focusSnapshot(
