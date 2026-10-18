@@ -562,7 +562,14 @@ struct DesktopMutationWatermarkStoreTests {
         let store = DesktopMutationWatermarkStore()
 
         #expect(store.directoryURL == DesktopCoordinationRuntimeRoot.defaultURL)
-        #expect(store.directoryURL.lastPathComponent == ".peekaboo")
+    }
+
+    @Test
+    func `Test runners coordinate outside the account's live root`() {
+        #expect(DesktopCoordinationRuntimeRoot.isTestRunner(ProcessInfo.processInfo.processName))
+        #expect(DesktopCoordinationRuntimeRoot.defaultURL.lastPathComponent == "peekaboo-test-coordination-\(getpid())")
+        #expect(!DesktopCoordinationRuntimeRoot.isTestRunner("Peekaboo"))
+        #expect(!DesktopCoordinationRuntimeRoot.isTestRunner("peekaboo"))
     }
 
     @Test

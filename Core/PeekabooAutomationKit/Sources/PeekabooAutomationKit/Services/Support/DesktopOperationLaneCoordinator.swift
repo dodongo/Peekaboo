@@ -331,12 +331,29 @@ public actor DesktopOperationLaneCoordinator {
 }
 
 enum DesktopCoordinationRuntimeRoot {
-    static var defaultURL: URL {
+    static let defaultURL: URL = Self.isTestRunner(ProcessInfo.processInfo.processName)
+        ? Self.testRunnerURL
         // Keep the legacy default journal location so already-running pre-lane hosts and new
         // processes share watermark/pending records. Unlike the legacy resolver, this physical
         // per-UID path never follows PEEKABOO_CONFIG_DIR or an environment-overridden home.
-        self.physicalHomeDirectoryURL
+        : Self.physicalHomeDirectoryURL
             .appendingPathComponent(".peekaboo", isDirectory: true)
+            .standardizedFileURL
+
+    /// Test runners coordinate in a per-process directory so fixture identities never reach the
+    /// account's live lane and journal files.
+    static func isTestRunner(_ processName: String) -> Bool {
+        ["xctest", "swiftpm-testing-helper"].contains(processName)
+    }
+
+    private static var testRunnerURL: URL {
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        let length = confstr(_CS_DARWIN_USER_TEMP_DIR, &buffer, buffer.count)
+        let temporaryDirectory = length > 0 && length <= buffer.count
+            ? URL(fileURLWithPath: String(cString: buffer), isDirectory: true)
+            : URL(fileURLWithPath: "/var/empty", isDirectory: true)
+        return temporaryDirectory
+            .appendingPathComponent("peekaboo-test-coordination-\(getpid())", isDirectory: true)
             .standardizedFileURL
     }
 
