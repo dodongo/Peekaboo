@@ -1,6 +1,7 @@
 import AppKit
 import Commander
 import Foundation
+import PeekabooBridge
 import PeekabooCore
 import PeekabooFoundation
 
@@ -494,7 +495,15 @@ func validatedRestoredWindowOutputInfo(
     // The service has already repinned the exact restored window. Public/AX inventory can
     // still omit it briefly or expose its Dock thumbnail, so accept refresh metadata only
     // when its complete identity receipt matches the verified restore receipt.
-    guard let refreshed = try await refresh() else { return original }
+    let refreshed: ServiceWindowInfo?
+    do {
+        refreshed = try await refresh()
+    } catch PeekabooError.windowNotFound {
+        refreshed = nil
+    } catch let error as PeekabooBridgeErrorEnvelope where error.kind == .windowNotFound {
+        refreshed = nil
+    }
+    guard let refreshed else { return original }
     let validated = try validatedPostMutationWindowReadback(
         refreshed,
         expectedIdentity: expectedIdentity,

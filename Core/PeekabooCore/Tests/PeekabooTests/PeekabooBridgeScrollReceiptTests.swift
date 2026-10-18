@@ -80,6 +80,30 @@ struct PeekabooBridgeScrollReceiptTests {
     }
 
     @Test
+    func `foreground element scroll attributes its global wheel events`() async throws {
+        let fixture = try await Self.makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        await MainActor.run {
+            fixture.services.automationStub.actionOutcome = .dispatchedUnverified(
+                delivery: .init(mechanism: .globalEvents, mode: .foreground),
+                evidence: .deliveryAccepted,
+                unitCount: .one)
+        }
+        let result = try await fixture.client.scrollWithOutcome(.init(
+            direction: .down,
+            amount: 1,
+            target: "S1",
+            snapshotId: "snapshot",
+            foreground: true))
+        #expect(result.outcome?.state == .dispatchedUnverified)
+        #expect(result.targetIdentity == nil)
+        let receipt = try #require(await fixture.client.lastOperationReceipt())
+        #expect(receipt.payload.operation == .scroll)
+        #expect(receipt.payload.target == .global)
+        await fixture.host.stop()
+    }
+
+    @Test
     func `targeted scroll plan is pinned to complete request window evidence`() throws {
         let bounds = CGRect(x: 0, y: 0, width: 800, height: 600)
         let expectedWindow = try UIAutomationTarget.ExactWindow(

@@ -393,7 +393,7 @@ extension PeekabooBridgeServer {
                 try await self.services.automation.scroll(request)
                 return ()
             },
-            fallbackTarget: request.foreground && request.target == nil && request.point == nil ? .global : nil,
+            fallbackTarget: request.foreground ? .global : nil,
             response: { _ in .ok })
     }
 

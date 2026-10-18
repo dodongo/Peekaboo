@@ -51,7 +51,7 @@ extension PeekabooBridgeOperationResultSemantics {
                 completion: .dispatchedUnverified(.init(
                     mechanism: payload.request.foreground ? .globalEvents : .accessibilityAction,
                     mode: payload.request.foreground ? .foreground : .background)),
-                targetPolicy: payload.request.target == nil ? .global : .handlerRequired)
+                targetPolicy: payload.request.foreground || payload.request.target == nil ? .global : .handlerRequired)
         case let .clickMenuItem(payload):
             return .init(
                 completion: .dispatchedUnverified(.init(
