@@ -1,7 +1,6 @@
 import AppKit
 import Commander
 import Foundation
-import PeekabooBridge
 import PeekabooCore
 import PeekabooFoundation
 
@@ -203,7 +202,7 @@ extension WindowCommand {
                     targetIdentity: actionResult.targetIdentity,
                     operation: "Window restore"
                 ) {
-                    let refreshedWindow = try await validatedRestoredWindowOutputInfo(original: windowInfo) {
+                    let refreshedWindow = await restoredWindowOutputInfo(original: windowInfo) {
                         try await WindowServiceBridge.listWindows(
                             windows: self.services.windows,
                             target: exactTarget
@@ -495,15 +494,7 @@ func validatedRestoredWindowOutputInfo(
     // The service has already repinned the exact restored window. Public/AX inventory can
     // still omit it briefly or expose its Dock thumbnail, so accept refresh metadata only
     // when its complete identity receipt matches the verified restore receipt.
-    let refreshed: ServiceWindowInfo?
-    do {
-        refreshed = try await refresh()
-    } catch PeekabooError.windowNotFound {
-        refreshed = nil
-    } catch let error as PeekabooBridgeErrorEnvelope where error.kind == .windowNotFound {
-        refreshed = nil
-    }
-    guard let refreshed else { return original }
+    guard let refreshed = try await refresh() else { return original }
     let validated = try validatedPostMutationWindowReadback(
         refreshed,
         expectedIdentity: expectedIdentity,

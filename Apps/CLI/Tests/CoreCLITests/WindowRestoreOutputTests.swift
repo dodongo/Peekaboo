@@ -1,5 +1,4 @@
 import CoreGraphics
-import PeekabooBridge
 import PeekabooCore
 import PeekabooFoundation
 import Testing
@@ -31,32 +30,6 @@ struct WindowRestoreOutputTests {
         }
 
         #expect(selected == self.original)
-    }
-
-    @Test
-    func `exact restore readback treats a briefly missing window as the verified original`() async throws {
-        let local = try await validatedRestoredWindowOutputInfo(original: self.original) {
-            throw PeekabooError.windowNotFound(criteria: "windowId 101")
-        }
-        let bridged = try await validatedRestoredWindowOutputInfo(original: self.original) {
-            throw PeekabooBridgeErrorEnvelope(
-                code: .notFound,
-                message: "Window not found: windowId 101",
-                kind: .windowNotFound
-            )
-        }
-
-        #expect(local == self.original)
-        #expect(bridged == self.original)
-    }
-
-    @Test
-    func `exact restore readback still fails on other refresh errors`() async {
-        await #expect(throws: PeekabooBridgeErrorEnvelope.self) {
-            try await validatedRestoredWindowOutputInfo(original: self.original) {
-                throw PeekabooBridgeErrorEnvelope(code: .internalError, message: "inventory failed")
-            }
-        }
     }
 
     @Test
