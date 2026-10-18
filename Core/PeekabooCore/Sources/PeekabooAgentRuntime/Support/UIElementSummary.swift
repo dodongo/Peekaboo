@@ -23,6 +23,7 @@ public struct UIElementSummary: Codable, Equatable, Sendable {
     public let is_enabled: Bool?
     public let is_selected: Bool?
     public let is_value_settable: Bool?
+    public let actions: [String]?
     public let keyboard_shortcut: String?
     public let selected_text_range: TextSelectionRange?
 
@@ -44,7 +45,8 @@ public struct UIElementSummary: Codable, Equatable, Sendable {
         is_selected: Bool?,
         is_value_settable: Bool?,
         keyboard_shortcut: String?,
-        selected_text_range: TextSelectionRange? = nil)
+        selected_text_range: TextSelectionRange? = nil,
+        actions: [String]? = nil)
     {
         self.id = id
         self.role = role
@@ -64,6 +66,7 @@ public struct UIElementSummary: Codable, Equatable, Sendable {
         self.is_value_settable = is_value_settable
         self.keyboard_shortcut = keyboard_shortcut
         self.selected_text_range = selected_text_range
+        self.actions = actions
     }
 
     /// Projects a detected element into its table row.
@@ -89,7 +92,10 @@ public struct UIElementSummary: Codable, Equatable, Sendable {
             is_selected: element.isSelected,
             is_value_settable: mutationTargetingAvailable ? element.isValueSettable : nil,
             keyboard_shortcut: element.attributes["keyboardShortcut"],
-            selected_text_range: mutationTargetingAvailable ? element.selectedTextRange : nil)
+            selected_text_range: mutationTargetingAvailable ? element.selectedTextRange : nil,
+            actions: element.attributes["actions"].flatMap {
+                try? JSONDecoder().decode([String].self, from: Data($0.utf8))
+            })
     }
 }
 

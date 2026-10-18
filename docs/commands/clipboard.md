@@ -56,8 +56,9 @@ peekaboo clipboard restore --slot original
 - Binary reads without `--output` return a summary; use `--output -` to pipe data.
 - File paths for `--file-path` and `--output` accept `~/...`.
 - Slot saves are stored in a dedicated named pasteboard so they work across separate `peekaboo clipboard` invocations. Restore reads that board’s current saved contents, preserving separate items and each item’s representations; an older service instance does not reuse a stale local copy.
-- `restore` removes the saved slot after applying it to avoid leaving clipboard snapshots around indefinitely.
-- Size guard: writes larger than 10 MB require `--allow-large`; the guard counts all representations plus any `--also-text` companion text.
+- Slots also preserve an empty clipboard. An empty restore succeeds with no UTI or size. Missing or malformed empty-slot markers refuse before changing the clipboard.
+- `restore` removes the saved slot after applying it unless another process replaced the slot meanwhile. Use task-specific slot names; restoration intentionally replaces the current clipboard.
+- Size guard: new writes larger than 10 MB require `--allow-large`; the guard counts all representations plus any `--also-text` companion text. A previously saved slot can always be restored regardless of this new-payload limit.
 - `--text` writes both `public.plain-text` and `.string` (`public.utf8-plain-text`) for compatibility.
 - `--verify` reads back each representation written and compares payloads (text is normalized for line endings).
 - On macOS 15.4+, General-clipboard reads require native `alwaysAllow` policy by default. `default`, `ask`, `alwaysDeny`, and unknown policies refuse before any content access; this also protects automatic Agent context and current-clipboard paste reads. A policy check cannot atomically exclude a concurrent change in System Settings.

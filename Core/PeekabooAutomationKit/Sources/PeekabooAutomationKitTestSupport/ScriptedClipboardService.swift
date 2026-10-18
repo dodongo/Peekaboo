@@ -111,7 +111,7 @@ open class ScriptedClipboardService: ClipboardTemporaryWriteProviding, Clipboard
         self.afterSave?()
     }
 
-    open func restore(slot: String) throws -> ClipboardReadResult {
+    open func restore(slot: String) throws -> ClipboardReadResult? {
         self.beforeMutation?()
         self.restoreCallCount += 1
         if let restoreError {

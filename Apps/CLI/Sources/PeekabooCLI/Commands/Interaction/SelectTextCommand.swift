@@ -56,8 +56,16 @@ RuntimeBackedCommand {
                 }
                 return result
             },
-            render: { result, outcome, identity, output, _ in
-                self.output(output, outcome: outcome, targetIdentity: identity) {
+            render: { result, outcome, identity, output, request in
+                let payload = ElementActionCommandResult(
+                    target: output.target,
+                    actionName: output.actionName,
+                    oldValue: output.oldValue,
+                    newValue: request.selectionType == .text ? request.text : "",
+                    textSelection: output.textSelection,
+                    executionTime: output.executionTime
+                )
+                self.output(payload, outcome: outcome, targetIdentity: identity) {
                     if let outcome {
                         print(ActionOutcomeHumanRenderer.statusLine(for: outcome, operation: "Select text"))
                     }
@@ -114,7 +122,7 @@ extension SelectTextCommand: ParsableCommand {
 
 extension SelectTextCommand: CommanderBindableCommand {
     mutating func applyCommanderValues(_ values: CommanderBindableValues) throws {
-        self.text = try values.decodeOptionalPositional(0, label: "text")
+        self.text = try values.decodeOptionalPositional(0, label: "text") ?? values.singleOption("value")
         self.on = values.singleOption("on")
         self.prefix = values.singleOption("prefix")
         self.suffix = values.singleOption("suffix")
@@ -129,6 +137,7 @@ extension SelectTextCommand: CommanderSignatureProviding {
         CommandSignature(
             arguments: [.make(label: "text", help: "Literal text to select", isOptional: true)],
             options: [
+                .commandOption("value", help: "Literal text (alternative to positional argument)", long: "value"),
                 .commandOption("on", help: "Observed element ID or unique query", long: "on"),
                 .commandOption("prefix", help: "Literal context immediately before the match", long: "prefix"),
                 .commandOption("suffix", help: "Literal context immediately after the match", long: "suffix"),

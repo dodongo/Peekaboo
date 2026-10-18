@@ -6,6 +6,37 @@ import XCTest
 
 @MainActor
 final class ClipboardSlotFidelityTests: XCTestCase {
+    func testEmptySlotRestoresAcrossInstancesAndIsConsumed() throws {
+        try self.withOwnedBoards { board, _ in
+            let writer = ClipboardService(pasteboard: board)
+            try writer.save(slot: "proof")
+            _ = try writer.set(ClipboardPayloadBuilder.textRequest(text: "temporary"))
+            let reader = ClipboardService(pasteboard: board)
+
+            let restored = try reader.restoreActionResult(slot: "proof")
+
+            XCTAssertNil(restored.payload)
+            XCTAssertEqual(restored.outcome?.state, .confirmedChange)
+            XCTAssertTrue(board.types?.isEmpty != false)
+            let generation = board.changeCount
+            XCTAssertThrowsError(try writer.restore(slot: "proof"))
+            XCTAssertEqual(board.changeCount, generation)
+        }
+    }
+
+    func testMalformedEmptySlotRefusesBeforeClearingDestination() throws {
+        try self.withOwnedBoards { board, slot in
+            let service = ClipboardService(pasteboard: board)
+            _ = try service.set(ClipboardPayloadBuilder.textRequest(text: "preserved"))
+            slot.setData(Data([2]), forType: .init("boo.peekaboo.clipboard-slot-empty"))
+            let generation = board.changeCount
+
+            XCTAssertThrowsError(try service.restoreActionResult(slot: "proof"))
+            XCTAssertEqual(board.changeCount, generation)
+            XCTAssertEqual(board.string(forType: .string), "preserved")
+        }
+    }
+
     func testRestoreUsesNewerSaveFromAnotherServiceInstance() throws {
         try self.withOwnedBoards { board, slot in
             let original = ClipboardService(pasteboard: board)
@@ -82,32 +113,29 @@ final class ClipboardSlotFidelityTests: XCTestCase {
 
             let restored = try ClipboardService(pasteboard: board).restore(slot: "proof")
 
-            XCTAssertEqual(restored.data, Data("saved".utf8))
-            XCTAssertEqual(restored.textPreview, "saved")
+            XCTAssertEqual(restored?.data, Data("saved".utf8))
+            XCTAssertEqual(restored?.textPreview, "saved")
             XCTAssertEqual(board.string(forType: .string), "saved")
             XCTAssertTrue(slot.types?.isEmpty != false)
         }
     }
 
-    func testSizeRefusalPreservesCurrentClipboardAndTheSavedSlot() throws {
+    func testRestorePreservesSavedContentsLargerThanTheSetLimit() throws {
         try self.withOwnedBoards { board, slot in
-            let writer = ClipboardService(pasteboard: board)
-            _ = try writer.set(ClipboardPayloadBuilder.textRequest(text: "larger saved contents"))
-            try writer.save(slot: "proof")
-            _ = try writer.set(ClipboardPayloadBuilder.textRequest(text: "current"))
-            let generation = board.changeCount
+            let service = ClipboardService(pasteboard: board, sizeLimit: 1)
+            let request = try ClipboardPayloadBuilder.textRequest(text: "larger saved contents")
+            XCTAssertThrowsError(try service.set(request))
+            XCTAssertTrue(board.setString("larger saved contents", forType: .string))
+            try service.save(slot: "proof")
+            service.clear()
 
-            XCTAssertThrowsError(try ClipboardService(pasteboard: board, sizeLimit: 1)
-                .restore(slot: "proof"))
-            { error in
-                guard case ClipboardServiceError.sizeExceeded = error else {
-                    return XCTFail("Expected size refusal, got \(error)")
-                }
-            }
+            let restored = try service.restoreActionResult(slot: "proof")
 
-            XCTAssertEqual(board.changeCount, generation)
-            XCTAssertEqual(board.string(forType: .string), "current")
-            XCTAssertEqual(slot.string(forType: .string), "larger saved contents")
+            XCTAssertEqual(restored.payload?.textPreview, "larger saved contents")
+            XCTAssertEqual(restored.outcome?.state, .confirmedChange)
+            XCTAssertEqual(board.string(forType: .string), "larger saved contents")
+            XCTAssertTrue(slot.types?.isEmpty != false)
+            XCTAssertThrowsError(try service.set(request))
         }
     }
 
@@ -135,8 +163,8 @@ final class ClipboardSlotFidelityTests: XCTestCase {
             let restored = try reader.restoreActionResult(slot: "proof")
 
             XCTAssertEqual(restored.outcome?.state, .confirmedChange)
-            XCTAssertEqual(restored.payload.data, payload)
-            XCTAssertEqual(restored.payload.textPreview, text)
+            XCTAssertEqual(restored.payload?.data, payload)
+            XCTAssertEqual(restored.payload?.textPreview, text)
             XCTAssertEqual(board.data(forType: plain), payload)
             XCTAssertEqual(board.string(forType: .string), text)
             let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")

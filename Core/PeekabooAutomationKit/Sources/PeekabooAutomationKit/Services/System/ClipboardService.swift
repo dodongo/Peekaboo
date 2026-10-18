@@ -81,7 +81,7 @@ public protocol ClipboardServiceProtocol: Sendable {
     func set(_ request: ClipboardWriteRequest) throws -> ClipboardReadResult
     func clear()
     func save(slot: String) throws
-    func restore(slot: String) throws -> ClipboardReadResult
+    func restore(slot: String) throws -> ClipboardReadResult?
 }
 
 /// Additive capability for clipboard mutations that retain canonical action semantics.
@@ -89,7 +89,7 @@ public protocol ClipboardServiceProtocol: Sendable {
 public protocol ClipboardServiceActionResultProviding: ClipboardServiceProtocol {
     func setActionResult(_ request: ClipboardWriteRequest) throws -> DesktopActionResult<ClipboardReadResult>
     func clearActionResult() throws -> DesktopActionResult<Void>
-    func restoreActionResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult>
+    func restoreActionResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult?>
 }
 
 /// Shared clipboard mutation policy used by services and result consumers.
@@ -154,7 +154,7 @@ extension ClipboardServiceProtocol {
                 evidence: .deliveryAccepted))
     }
 
-    public func restoreResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult> {
+    public func restoreResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult?> {
         if let provider = self as? any ClipboardServiceActionResultProviding {
             return try provider.restoreActionResult(slot: slot)
         }
@@ -240,6 +240,7 @@ private enum ClipboardMutationResultOwner {
 @MainActor
 public final class ClipboardService: ClipboardServiceActionResultProviding, ClipboardTemporaryWriteProviding,
 ClipboardReadAccessProviding {
+    private static let emptySlotType = NSPasteboard.PasteboardType("boo.peekaboo.clipboard-slot-empty")
     private let pasteboard: NSPasteboard
     private let sizeLimit: Int
     private let readAccessStatusReader: @MainActor (NSPasteboard) -> ClipboardReadAccessStatus
@@ -566,12 +567,16 @@ ClipboardReadAccessProviding {
         let objects = try Self.pasteboardItems(from: items)
         let slotPasteboard = NSPasteboard(name: self.slotPasteboardName(for: trimmedSlot))
         slotPasteboard.clearContents()
-        if !objects.isEmpty, !slotPasteboard.writeObjects(objects) {
+        if objects.isEmpty {
+            guard slotPasteboard.setData(Data([1]), forType: Self.emptySlotType) else {
+                throw ClipboardServiceError.writeFailed("Unable to save empty clipboard slot \(trimmedSlot)")
+            }
+        } else if !slotPasteboard.writeObjects(objects) {
             throw ClipboardServiceError.writeFailed("Unable to save clipboard items to slot \(trimmedSlot)")
         }
     }
 
-    public func restore(slot: String) throws -> ClipboardReadResult {
+    public func restore(slot: String) throws -> ClipboardReadResult? {
         var didDispatch = false
         var restoredItems: [[ClipboardRepresentation]] = []
         return try self.restore(
@@ -580,7 +585,7 @@ ClipboardReadAccessProviding {
             restoredItems: &restoredItems)
     }
 
-    public func restoreActionResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult> {
+    public func restoreActionResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult?> {
         var restoredItems: [[ClipboardRepresentation]] = []
         return try ClipboardMutationResultOwner.perform(
             operation: "Clipboard restore",
@@ -596,7 +601,7 @@ ClipboardReadAccessProviding {
     private func restore(
         slot: String,
         didDispatch: inout Bool,
-        restoredItems: inout [[ClipboardRepresentation]]) throws -> ClipboardReadResult
+        restoredItems: inout [[ClipboardRepresentation]]) throws -> ClipboardReadResult?
     {
         let trimmedSlot = slot.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSlot.isEmpty else {
@@ -605,21 +610,28 @@ ClipboardReadAccessProviding {
 
         let slotPasteboard = NSPasteboard(name: self.slotPasteboardName(for: trimmedSlot))
         // Slot boards are named, not General; native clipboard read admission is not required.
-        let items = self.snapshotItems(from: slotPasteboard)
-        guard !items.isEmpty else { throw ClipboardServiceError.slotNotFound(trimmedSlot) }
-        let totalSize = items.flatMap(\.self).reduce(0) { $0 + $1.data.count }
-        guard totalSize <= self.sizeLimit else {
-            throw ClipboardServiceError.sizeExceeded(current: totalSize, limit: self.sizeLimit)
+        let slotChangeCount = slotPasteboard.changeCount
+        let items: [[ClipboardRepresentation]]
+        if let marker = slotPasteboard.data(forType: Self.emptySlotType) {
+            guard marker == Data([1]), slotPasteboard.types == [Self.emptySlotType] else {
+                throw ClipboardServiceError.writeFailed("Malformed empty clipboard slot")
+            }
+            items = []
+        } else {
+            items = self.snapshotItems(from: slotPasteboard)
+            guard !items.isEmpty else { throw ClipboardServiceError.slotNotFound(trimmedSlot) }
         }
         restoredItems = items.map(Self.withPlainTextCompanion)
         let objects = try Self.pasteboardItems(from: restoredItems)
         self.pasteboard.clearContents()
         didDispatch = true
-        guard self.pasteboard.writeObjects(objects) else {
+        if !objects.isEmpty, !self.pasteboard.writeObjects(objects) {
             throw ClipboardServiceError.writeFailed("Unable to restore saved clipboard items")
         }
-        slotPasteboard.clearContents()
-        return Self.writeResult(for: ClipboardWriteRequest(representations: items[0]))
+        if slotPasteboard.changeCount == slotChangeCount {
+            slotPasteboard.clearContents()
+        }
+        return items.first.map { Self.writeResult(for: ClipboardWriteRequest(representations: $0)) }
     }
 
     // MARK: - Helpers

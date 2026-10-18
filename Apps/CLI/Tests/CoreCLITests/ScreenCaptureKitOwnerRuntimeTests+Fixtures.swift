@@ -337,7 +337,7 @@ private struct UnusedRoutingClipboard: ClipboardServiceProtocol {
         throw POSIXError(.ENOTSUP)
     }
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         throw POSIXError(.ENOTSUP)
     }
 }

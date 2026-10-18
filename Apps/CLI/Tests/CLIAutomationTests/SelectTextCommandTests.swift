@@ -21,8 +21,28 @@ struct SelectTextCommandTests {
         #expect(result.exitStatus == 0)
         #expect(result.stdout.contains("cursor_after"))
         #expect(result.stdout.contains("textSelection"))
+        let json = try Self.jsonObject(result.stdout)
+        let data = try #require(json["data"] as? [String: Any])
+        #expect(data["newValue"] as? String == "")
         #expect(automation.requests == [.init(text: "needle", prefix: "a ", suffix: " b", selectionType: .cursorAfter)])
         #expect(automation.setValueCalls.isEmpty && automation.performActionCalls.isEmpty)
+    }
+
+    @Test
+    func `value option keeps the fork selection JSON shape`() async throws {
+        let automation = SelectionAutomation()
+        let snapshots = StubSnapshotManager()
+        let snapshot = try await ActionOutcomeCommandTests.storeExactWindowElementSnapshot(in: snapshots)
+        let services = TestServicesFactory.makePeekabooServices(snapshots: snapshots, automation: automation)
+        let result = try await InProcessCommandRunner.run([
+            "select-text", "--value", "needle", "--on", "elem_3", "--snapshot", snapshot,
+            "--json", "--no-remote",
+        ], services: services)
+        #expect(result.exitStatus == 0)
+        let json = try Self.jsonObject(result.stdout)
+        let data = try #require(json["data"] as? [String: Any])
+        #expect(data["newValue"] as? String == "needle")
+        #expect(automation.requests == [.init(text: "needle")])
     }
 
     @Test

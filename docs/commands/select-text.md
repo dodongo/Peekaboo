@@ -41,6 +41,7 @@ write remains indeterminate and retry-unsafe. Observe again before retrying; the
 
 JSON includes `textSelection` with `matchedRange`, `selectedRange`, and `selectionType`, alongside the ordinary
 canonical outcome and target receipt. MCP includes `matched_text_range`, `selected_text_range`, and
-`selection_type`. Locations and lengths are UTF-16 code units; a caret has length zero. No source text is returned.
+`selection_type`. Locations and lengths are UTF-16 code units; a caret has length zero. CLI JSON also retains `newValue`: the selected literal, or an
+empty string for a caret. `--value` is accepted as an alternative to the positional literal.
 Remote selection requires Bridge protocol 1.42, the `textSelection` capability, and attested element-mutation
 outcomes. Older hosts refuse before dispatch.

@@ -334,7 +334,7 @@ private final class ClipboardOutcomeService: ClipboardServiceActionResultProvidi
         self.slots[slot] = current
     }
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         self.restoreCallCount += 1
         guard let result = self.slots[slot] else {
             throw ClipboardServiceError.slotNotFound(slot)
@@ -355,7 +355,7 @@ private final class ClipboardOutcomeService: ClipboardServiceActionResultProvidi
         return DesktopActionResult(outcome: self.outcome)
     }
 
-    func restoreActionResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult> {
+    func restoreActionResult(slot: String) throws -> DesktopActionResult<ClipboardReadResult?> {
         let payload = try self.restore(slot: slot)
         try self.throwPostWriteErrorIfNeeded()
         return DesktopActionResult(payload: payload, outcome: self.outcome)

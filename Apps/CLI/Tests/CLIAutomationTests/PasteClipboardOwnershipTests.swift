@@ -260,7 +260,7 @@ private final class LegacyClipboardService: ClipboardServiceProtocol {
         try self.backing.save(slot: slot)
     }
 
-    func restore(slot: String) throws -> ClipboardReadResult {
+    func restore(slot: String) throws -> ClipboardReadResult? {
         try self.backing.restore(slot: slot)
     }
 }
