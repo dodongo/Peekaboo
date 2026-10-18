@@ -447,6 +447,34 @@ struct ScreenCaptureKitOwnerLeaseTests {
     }
 
     @Test
+    func `Failed process capability preparation is rescanned by the next caller`() async throws {
+        struct TransientBlocker: Error {}
+        let identity = ScreenCaptureKitOwnerLease.OwnerIdentity(
+            processIdentifier: 1,
+            processStartIdentity: 1,
+            buildIdentity: "failed-preparation-test")
+        let scanCount = OwnerLeaseScanCounter()
+        let prepare: @Sendable () throws -> Void = {
+            scanCount.increment()
+            if scanCount.value == 1 { throw TransientBlocker() }
+        }
+
+        await #expect(throws: TransientBlocker.self) {
+            try await ScreenCaptureKitOwnerLease.processCapabilityPreparationTask(
+                ownerIdentity: identity,
+                prepare: prepare).value
+        }
+        try await ScreenCaptureKitOwnerLease.processCapabilityPreparationTask(
+            ownerIdentity: identity,
+            prepare: prepare).value
+        try await ScreenCaptureKitOwnerLease.processCapabilityPreparationTask(
+            ownerIdentity: identity,
+            prepare: prepare).value
+
+        #expect(scanCount.value == 2)
+    }
+
+    @Test
     func `Process capability preparation wait is bounded without cancelling its scan`() async throws {
         let gate = OwnerPreparationAsyncGate()
         let task = Task { () async throws in

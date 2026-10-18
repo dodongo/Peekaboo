@@ -473,16 +473,35 @@ public final class ScreenCaptureKitOwnerLease: Sendable {
     }
 
     private static func currentProcessCapabilityPreparationTask() throws -> Task<Void, any Error> {
-        let ownerIdentity = try self.currentOwnerIdentity()
-        return self.preparationLock.withLock {
+        try self.processCapabilityPreparationTask(ownerIdentity: self.currentOwnerIdentity()) {
+            try self.registerCurrentProcessCapability()
+            try ScreenCaptureKitOwnerLease().prepareForClaim()
+        }
+    }
+
+    /// Shares one scan per owner identity. A failed scan is dropped so a transient blocker, such as a
+    /// short-lived uncoordinated process, cannot withhold ScreenCaptureKit for the rest of this process.
+    static func processCapabilityPreparationTask(
+        ownerIdentity: OwnerIdentity,
+        prepare: @escaping @Sendable () throws -> Void) -> Task<Void, any Error>
+    {
+        self.preparationLock.withLock {
             if let preparation = self.processCapabilityPreparation,
                preparation.ownerIdentity == ownerIdentity
             {
                 return preparation.task
             }
             let task = Task.detached(priority: .userInitiated) {
-                try self.registerCurrentProcessCapability()
-                try ScreenCaptureKitOwnerLease().prepareForClaim()
+                do {
+                    try prepare()
+                } catch {
+                    self.preparationLock.withLock {
+                        if self.processCapabilityPreparation?.ownerIdentity == ownerIdentity {
+                            self.processCapabilityPreparation = nil
+                        }
+                    }
+                    throw error
+                }
             }
             self.processCapabilityPreparation = ProcessCapabilityPreparation(
                 ownerIdentity: ownerIdentity,
