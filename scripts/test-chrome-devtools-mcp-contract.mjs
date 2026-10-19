@@ -106,6 +106,53 @@ const handlers = new Map(
   tools.map((tool) => [tool.name, new ToolHandler(tool, serverArgs, async () => undefined, inertMutex)]),
 );
 
+// The embedded input patch skips only the stable-DOM wait, and only when a caller passes false.
+async function inputWaitOptions(name, params) {
+  let recorded = "not called";
+  const page = {
+    async getElementByUid() {
+      return { [Symbol.dispose]() {} };
+    },
+    getAXNodeByUid() {
+      return undefined;
+    },
+    async waitForEventsAfterAction(_action, options) {
+      recorded = options;
+      return {};
+    },
+  };
+  const response = { appendResponseLine() {}, attachWaitForResult() {}, includeSnapshot() {} };
+  await tools.find((tool) => tool.name === name).handler({ params, page }, response);
+  return recorded;
+}
+for (const [name, params] of [
+  ["click", { uid: "1_1" }],
+  ["fill", { uid: "1_1", value: "value" }],
+  ["hover", { uid: "1_1" }],
+  ["press_key", { key: "Enter" }],
+]) {
+  const shape = handlers.get(name).registeredInputSchema.shape;
+  assert.equal(unwrapOptional(shape.waitForStableDom)?._def?.type, "boolean", `${name} must accept waitForStableDom`);
+  assert.equal(handlers.get(name).registeredInputSchema.safeParse({ pageId: 1, ...params, waitForStableDom: 1 }).success,
+    false, `${name} waitForStableDom must be boolean`);
+  assert.equal(await inputWaitOptions(name, params), undefined, `${name} default wait changed`);
+  assert.equal(await inputWaitOptions(name, { ...params, waitForStableDom: true }), undefined,
+    `${name} explicit stable-DOM wait changed`);
+  assert.deepEqual(await inputWaitOptions(name, { ...params, waitForStableDom: false }), { waitForStableDom: false },
+    `${name} must skip only the stable-DOM wait`);
+}
+assert.deepEqual(
+  tools.filter((tool) => Object.hasOwn(handlers.get(tool.name).registeredInputSchema.shape ?? {}, "waitForStableDom"))
+    .map((tool) => tool.name).sort(),
+  ["click", "evaluate_script", "fill", "hover", "press_key"],
+  "only click, fill, hover, press_key and evaluate_script accept waitForStableDom",
+);
+assert.equal(
+  await inputWaitOptions("fill_form", { elements: [{ uid: "1_1", value: "value" }], waitForStableDom: false }),
+  undefined,
+  "fill_form must keep its stable-DOM wait",
+);
+
 const structuredFixtureTool = {
   name: "peekaboo_structured_fixture",
   description: "Exercises the real pinned ToolHandler structured-content gate",

@@ -63,10 +63,15 @@ try {
   assert.ok(locator.inputSchema.required.includes('pageId'));
   assert.equal(script.inputSchema.properties.skipNavigationWait.type, 'boolean');
   assert.equal(script.inputSchema.properties.waitForStableDom.type, 'boolean');
+  for (const name of ['click', 'fill', 'hover', 'press_key']) {
+    const tool = result.tools.find(candidate => candidate.name === name);
+    assert.equal(tool.inputSchema.properties.waitForStableDom.type, 'boolean', name + ' must accept waitForStableDom');
+    assert.equal(tool.inputSchema.required.includes('waitForStableDom'), false);
+  }
   const upload = result.tools.find(tool => tool.name === 'upload_file');
   assert.ok(upload);
   // Keep the relevant real MCP Tool records for the opt-in Swift integration test.
-  if (process.argv.includes('--json')) process.stdout.write(JSON.stringify([locator, script, wait, network, upload]));
+  if (process.argv.includes('--json')) process.stdout.write(JSON.stringify([locator, script, wait, network, upload, result.tools.find(tool => tool.name === 'click')]));
   else console.log('Provider MCP tools/list schema contract passed; no browser connection requested.');
 } finally {
   await client.close();

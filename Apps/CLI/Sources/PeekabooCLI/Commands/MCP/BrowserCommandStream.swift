@@ -10,6 +10,7 @@ enum BrowserCommandStream {
     static let maximumRequests = 256
     static let maximumLineBytes = 1_048_576
     static let actions: Set<String> = ["snapshot", "click", "fill", "fill_form", "hover", "call"]
+    static let stableDOMWaitActions: Set<String> = ["click", "fill", "hover"]
     static let rawTools: Set<String> = [
         "navigate_page", "take_snapshot", "evaluate_script", "press_key", "type_text", "wait_for",
         "peekaboo_locator_action", "upload_file",
@@ -21,10 +22,19 @@ enum BrowserCommandStream {
               let action = input["action"] as? String, self.actions.contains(action)
         else { throw ValidationError("Invalid browser stream request") }
         let allowed: Set<String> = [
-            "action", "uid", "value", "include_snapshot", "mcp_tool", "mcp_args_json",
+            "action", "uid", "value", "include_snapshot", "wait_for_stable_dom", "mcp_tool", "mcp_args_json",
         ]
         guard Set(input.keys).isSubset(of: allowed) else {
             throw ValidationError("Browser stream cannot change page, channel, connection, or execution policy")
+        }
+        if let wait = input["wait_for_stable_dom"] {
+            guard self.stableDOMWaitActions.contains(action) else {
+                throw ValidationError("wait_for_stable_dom applies only to click, fill, and hover; " +
+                    "pass waitForStableDom in mcp_args_json for press_key")
+            }
+            guard CFGetTypeID(wait as CFTypeRef) == CFBooleanGetTypeID() else {
+                throw ValidationError("wait_for_stable_dom must be a boolean")
+            }
         }
         if action == "call" {
             guard let tool = input["mcp_tool"] as? String, self.rawTools.contains(tool) else {

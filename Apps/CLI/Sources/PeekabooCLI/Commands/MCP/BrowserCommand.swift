@@ -50,6 +50,7 @@ InjectedRuntimeBackedCommand {
     var submitKey: String?
     var dialogAction: String?
     var includeSnapshot = false
+    var noWaitForStableDom = false
     var double = false
     var bringToFront = false
     var noBringToFront = false
@@ -252,7 +253,7 @@ InjectedRuntimeBackedCommand {
         }
     }
 
-    private func arguments() throws -> [String: Any] {
+    func arguments() throws -> [String: Any] {
         let normalizedAction = self.action
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "-", with: "_")
@@ -295,6 +296,13 @@ InjectedRuntimeBackedCommand {
         self.add(self.submitKey, as: "submit_key", to: &arguments)
         self.add(self.dialogAction, as: "dialog_action", to: &arguments)
         self.addFlag(self.includeSnapshot, as: "include_snapshot", to: &arguments)
+        if self.noWaitForStableDom {
+            let actions: Set<BrowserAction> = [.click, .fill, .hover, .pressKey]
+            guard let action = BrowserAction(rawValue: normalizedAction), actions.contains(action) else {
+                throw ValidationError("--no-wait-for-stable-dom is accepted only by click, fill, hover, and press-key")
+            }
+            arguments["wait_for_stable_dom"] = false
+        }
         self.addFlag(self.double, as: "double", to: &arguments)
         if self.bringToFront {
             arguments["bring_to_front"] = true
@@ -467,6 +475,12 @@ extension BrowserCommand: CommanderSignatureProviding {
                     help: "Include fresh snapshot when supported",
                     long: "include-snapshot"
                 ),
+                .commandFlag(
+                    "noWaitForStableDom",
+                    help: "Skip the post-action stable-DOM wait for click, fill, hover, or press-key; " +
+                        "verify the page effect yourself",
+                    long: "no-wait-for-stable-dom"
+                ),
                 .commandFlag("double", help: "Double-click for click", long: "double"),
                 .commandFlag("bringToFront", help: "Bring selected page to front", long: "bring-to-front"),
                 .commandFlag(
@@ -509,6 +523,7 @@ extension BrowserCommand: CommanderBindableCommand {
         self.submitKey = values.singleOption("submitKey")
         self.dialogAction = values.singleOption("dialogAction")
         self.includeSnapshot = values.flag("includeSnapshot")
+        self.noWaitForStableDom = values.flag("noWaitForStableDom")
         self.double = values.flag("double")
         self.bringToFront = values.flag("bringToFront")
         self.noBringToFront = values.flag("noBringToFront")

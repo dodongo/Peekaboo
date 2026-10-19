@@ -63,6 +63,31 @@ struct BrowserCommandStreamTests {
     }
 
     @Test
+    func forwardsStableDOMWaitOnlyAsBooleanForElementActions() throws {
+        for input in [
+            #"{"action":"click","uid":"7_3","wait_for_stable_dom":false}"#,
+            #"{"action":"fill","uid":"7_3","value":"v","wait_for_stable_dom":false}"#,
+            #"{"action":"hover","uid":"7_3","wait_for_stable_dom":true}"#,
+        ] {
+            let arguments = try BrowserCommandStream.arguments(from: Data(input.utf8), pageID: 7)
+            #expect(arguments["wait_for_stable_dom"] is Bool)
+        }
+        let click = Data(#"{"action":"click","uid":"7_3","wait_for_stable_dom":false}"#.utf8)
+        #expect(try BrowserCommandStream.arguments(from: click, pageID: 7)["wait_for_stable_dom"] as? Bool == false)
+        for input in [
+            #"{"action":"snapshot","wait_for_stable_dom":false}"#,
+            #"{"action":"fill_form","mcp_args_json":"{}","wait_for_stable_dom":false}"#,
+            #"{"action":"call","mcp_tool":"press_key","wait_for_stable_dom":false}"#,
+            #"{"action":"click","uid":"7_3","wait_for_stable_dom":0}"#,
+            #"{"action":"click","uid":"7_3","wait_for_stable_dom":"false"}"#,
+        ] {
+            #expect(throws: (any Error).self) {
+                try BrowserCommandStream.arguments(from: Data(input.utf8), pageID: 7)
+            }
+        }
+    }
+
+    @Test
     func acceptsOnlyBatchRawToolsAndRejectsOversizedRequests() throws {
         for tool in [
             "navigate_page", "take_snapshot", "evaluate_script", "press_key", "type_text", "wait_for",

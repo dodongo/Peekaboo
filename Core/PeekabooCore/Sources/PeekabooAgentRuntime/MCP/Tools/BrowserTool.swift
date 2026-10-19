@@ -94,6 +94,11 @@ public struct BrowserTool: MCPTool {
             "include_snapshot": SchemaBuilder.boolean(
                 description: "Ask Chrome DevTools MCP to include a fresh snapshot when supported.",
                 default: false),
+            "wait_for_stable_dom": SchemaBuilder.boolean(
+                description: "Set false for click, fill, hover, or press_key to skip only the provider's " +
+                    "post-action stable-DOM wait; dialog handling and the navigation wait remain. " +
+                    "Verify the page effect yourself.",
+                default: true),
             "double": SchemaBuilder.boolean(description: "Double-click for click.", default: false),
             "bring_to_front": SchemaBuilder.boolean(description: "Bring selected page to front.", default: false),
             "background": SchemaBuilder.boolean(description: "Open new page in the background.", default: true),
@@ -145,7 +150,8 @@ public struct BrowserTool: MCPTool {
         } else {
             for key in [
                 "url", "navigation_type", "uid", "to_uid", "text", "value", "key", "submit_key",
-                "dialog_action", "include_snapshot", "double", "bring_to_front", "background", "timeout",
+                "dialog_action", "include_snapshot", "wait_for_stable_dom", "double", "bring_to_front", "background",
+                "timeout",
                 "resource_types", "message_id",
             ] {
                 properties.removeValue(forKey: key)
@@ -1146,11 +1152,12 @@ public enum BrowserMCPCallMapper {
         let calls: [BrowserMCPMappedCall] = switch action {
         case .type, .pressKey:
             try [
-                BrowserMCPMappedCall(toolName: "click", arguments: [
+                BrowserMCPMappedCall(toolName: "click", arguments: self.compact([
                     "uid": self.requiredString("uid", arguments),
                     "dblClick": false,
                     "includeSnapshot": false,
-                ]),
+                    "waitForStableDom": action == .pressKey ? arguments.getBool("wait_for_stable_dom") : nil,
+                ])),
                 self.mapSingle(action: action, arguments: arguments),
             ]
         default:
@@ -1247,6 +1254,7 @@ public enum BrowserMCPCallMapper {
                 "uid": self.requiredString("uid", arguments),
                 "dblClick": arguments.getBool("double") ?? false,
                 "includeSnapshot": arguments.getBool("include_snapshot") ?? false,
+                "waitForStableDom": arguments.getBool("wait_for_stable_dom"),
             ]))
         case .domClick:
             return try BrowserMCPMappedCall(toolName: "evaluate_script", arguments: [
@@ -1266,6 +1274,7 @@ public enum BrowserMCPCallMapper {
                 "uid": self.requiredString("uid", arguments),
                 "value": self.requiredString("value", arguments),
                 "includeSnapshot": arguments.getBool("include_snapshot") ?? false,
+                "waitForStableDom": arguments.getBool("wait_for_stable_dom"),
             ]))
         case .fillForm:
             return try BrowserMCPMappedCall(toolName: "fill_form", arguments: self.jsonObject(
@@ -1282,6 +1291,7 @@ public enum BrowserMCPCallMapper {
             return try BrowserMCPMappedCall(toolName: "hover", arguments: self.compact([
                 "uid": self.requiredString("uid", arguments),
                 "includeSnapshot": arguments.getBool("include_snapshot") ?? false,
+                "waitForStableDom": arguments.getBool("wait_for_stable_dom"),
             ]))
         case .type:
             return try BrowserMCPMappedCall(toolName: "type_text", arguments: self.compact([
@@ -1292,6 +1302,7 @@ public enum BrowserMCPCallMapper {
             return try BrowserMCPMappedCall(toolName: "press_key", arguments: self.compact([
                 "key": self.requiredString("key", arguments),
                 "includeSnapshot": arguments.getBool("include_snapshot") ?? false,
+                "waitForStableDom": arguments.getBool("wait_for_stable_dom"),
             ]))
         case .uploadFile:
             return try BrowserMCPMappedCall(toolName: "upload_file", arguments: self.compact([

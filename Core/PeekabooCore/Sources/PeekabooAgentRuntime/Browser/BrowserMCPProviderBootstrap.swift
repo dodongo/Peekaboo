@@ -30,6 +30,7 @@ enum BrowserMCPProviderBootstrap {
     const browserTarget = pathToFileURL(join(root, 'build/src/BrowserManager.js')).href;
     const transportTarget = pathToFileURL(join(root, 'build/src/third_party/index.js')).href;
     const scriptTarget = pathToFileURL(join(root, 'build/src/tools/script.js')).href;
+    const inputTarget = pathToFileURL(join(root, 'build/src/tools/input.js')).href;
     const toolsTarget = pathToFileURL(join(root, 'build/src/tools/tools.js')).href;
     const snapshotTarget = pathToFileURL(join(root, 'build/src/tools/snapshot.js')).href;
     const networkTarget = pathToFileURL(join(root, 'build/src/tools/network.js')).href;
@@ -38,10 +39,10 @@ enum BrowserMCPProviderBootstrap {
     const locatorSource = Buffer.from('__PEEKABOO_LOCATOR_SOURCE__', 'base64').toString('utf8');
     const loader = `
       import {createHash} from 'node:crypto';
-      let target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget, networkTarget;
+      let target, browserTarget, transportTarget, toolsTarget, scriptTarget, inputTarget, snapshotTarget, networkTarget;
       let locatorSource, pageWaitSource, assetBundleSource;
       export function initialize(data) {
-        ({target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget, networkTarget,
+        ({target, browserTarget, transportTarget, toolsTarget, scriptTarget, inputTarget, snapshotTarget, networkTarget,
           locatorSource, pageWaitSource, assetBundleSource} = data);
       }
       export async function load(url, context, nextLoad) {
@@ -93,6 +94,44 @@ enum BrowserMCPProviderBootstrap {
             .replace("{ handleDialog: dialogAction ?? 'accept', waitForStableDom });",
               "{ handleDialog: dialogAction ?? 'accept', waitForStableDom, " +
               "expectNavigationIn: skipNavigationWait ? 0 : undefined });");
+          return {...result, source: updated};
+        }
+        if (url === inputTarget) {
+          const source = Buffer.from(result.source);
+          if (createHash('sha256').update(source).digest('hex') !==
+              '7313138ff51cf7e6d38f7b9608774abb16143100b2da425d10ed4250b268304c') {
+            throw new Error('Peekaboo: unaudited input tool');
+          }
+          const schema = 'waitForStableDom: waitForStableDomSchema,\\n        ';
+          const options = 'peekabooWaitOptions(request.params)';
+          const updated = source.toString('utf8')
+            .replace('const includeSnapshotSchema = zod',
+              'const waitForStableDomSchema = zod.boolean().optional()' +
+              ".describe('Set to false to skip waiting for a stable DOM after the action. Default is true.');\\n" +
+              'const peekabooWaitOptions = params => ' +
+              'params.waitForStableDom === false ? { waitForStableDom: false } : undefined;\\n' +
+              'const includeSnapshotSchema = zod')
+            .replace("snapshot'),\\n        dblClick: dblClickSchema,",
+              "snapshot'),\\n        " + schema + 'dblClick: dblClickSchema,')
+            .replace("snapshot'),\\n        includeSnapshot: includeSnapshotSchema,",
+              "snapshot'),\\n        " + schema + 'includeSnapshot: includeSnapshotSchema,')
+            .replace("for radio buttons.'),\\n        includeSnapshot: includeSnapshotSchema,",
+              "for radio buttons.'),\\n        " + schema + 'includeSnapshot: includeSnapshotSchema,')
+            .replace("Modifiers: Control, Shift, Alt, Meta'),\\n        ",
+              "Modifiers: Control, Shift, Alt, Meta'),\\n        " + schema)
+            .replace('                });\\n                response.appendResponseLine(request.params.dblClick',
+              '                }, ' + options + ');\\n' +
+              '                response.appendResponseLine(request.params.dblClick')
+            .replace('hover({ signal });\\n                });',
+              'hover({ signal });\\n                }, ' + options + ');')
+            .replace('keyboard.up(modifier);\\n                }\\n            }\\n        });',
+              'keyboard.up(modifier);\\n                }\\n            }\\n        }, ' + options + ');')
+            .replace('async function fillFormElements(elements, page) {',
+              'async function fillFormElements(elements, page, waitOptions) {')
+            .replace('            }\\n        });\\n        return { result };',
+              '            }\\n        }, waitOptions);\\n        return { result };')
+            .replace('request.params.value }], request.page);',
+              'request.params.value }], request.page, ' + options + ');');
           return {...result, source: updated};
         }
         if (url === toolsTarget) {
@@ -150,8 +189,8 @@ enum BrowserMCPProviderBootstrap {
       }
     `;
     register('data:text/javascript,' + encodeURIComponent(loader), {
-      data: {target, browserTarget, transportTarget, toolsTarget, scriptTarget, snapshotTarget, networkTarget,
-        locatorSource, pageWaitSource, assetBundleSource},
+      data: {target, browserTarget, transportTarget, toolsTarget, scriptTarget, inputTarget, snapshotTarget,
+        networkTarget, locatorSource, pageWaitSource, assetBundleSource},
     });
     // Fail before starting the server (and before any browser connection) if the patch cannot load.
     await import(target);
