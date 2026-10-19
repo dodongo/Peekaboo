@@ -11,7 +11,7 @@ struct BrowserProviderFeaturesTests {
         let path = try #require(ProcessInfo.processInfo.environment["PEEKABOO_PROVIDER_SCHEMA_FIXTURE"])
         let tools = try JSONDecoder().decode([Tool].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         #expect(BrowserMCPProviderFeatures.detect(in: tools) == [
-            "assets:capturedBundle", "clipboard:session", "export:workspace",
+            "assets:capturedBundle", "clipboard:session", "export:workspace", "input:waitForStableDom",
             "locator:check", "locator:click", "locator:clickOptions", "locator:commit", "locator:composition",
             "locator:copy", "locator:count",
             "locator:dblclick",
@@ -68,10 +68,19 @@ struct BrowserProviderFeaturesTests {
                 "waitForStableDom": .object(["type": .string("boolean")]),
             ]),
         ]))
-        #expect(BrowserMCPProviderFeatures.detect(in: [script, locator]) == [
-            "locator:click", "locator:dblclick", "locator:fill", "read:skipNavigationWait",
+        let click = Tool(name: "click", description: "fixture", inputSchema: .object([
+            "properties": .object(["waitForStableDom": .object(["type": .string("boolean")])]),
+        ]))
+        #expect(BrowserMCPProviderFeatures.detect(in: [script, locator, click]) == [
+            "input:waitForStableDom", "locator:click", "locator:dblclick", "locator:fill", "read:skipNavigationWait",
         ])
         #expect(BrowserMCPProviderFeatures.detect(in: [
+            Tool(name: "click", description: "legacy", inputSchema: .object([
+                "properties": .object(["uid": .object(["type": .string("string")])]),
+            ])),
+            Tool(name: "hover", description: "other tool", inputSchema: .object([
+                "properties": .object(["waitForStableDom": .object(["type": .string("boolean")])]),
+            ])),
             Tool(name: "evaluate_script", description: "legacy", inputSchema: .object([:])),
             Tool(name: "peekaboo_locator_action", description: "malformed", inputSchema: .null),
         ]).isEmpty)

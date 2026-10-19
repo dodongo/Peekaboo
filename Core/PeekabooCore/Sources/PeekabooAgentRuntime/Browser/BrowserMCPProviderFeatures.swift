@@ -221,6 +221,9 @@ enum BrowserMCPProviderFeatures {
         {
             features.insert("read:skipNavigationWait")
         }
+        if tool.name == "click", properties?["waitForStableDom"]?.objectValue?["type"] == .string("boolean") {
+            features.insert("input:waitForStableDom")
+        }
         return features
     }
 
