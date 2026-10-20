@@ -99,6 +99,15 @@ struct WindowStateMutationPolicyTests {
     }
 
     @Test
+    func `close treats an ordered-out WindowServer entry without its AX window as missing`() {
+        #expect(pinnedWindowClosePresenceDisposition(
+            windowServerEntryPresent: true,
+            windowServerEntryMatchesReceipt: false,
+            minimizedAXPresence: .missing,
+            expectedMinimized: false) == .missing)
+    }
+
+    @Test
     func `minimized close fails closed when AX presence is unavailable`() {
         #expect(pinnedWindowClosePresenceDisposition(
             windowServerEntryPresent: false,

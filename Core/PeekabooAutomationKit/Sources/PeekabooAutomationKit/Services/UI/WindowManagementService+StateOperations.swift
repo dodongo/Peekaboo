@@ -460,7 +460,8 @@ extension WindowManagementService {
             }
             let windowServerMatchesReceipt = windowServerIdentity.map { identity in
                 identity.ownerProcessIdentifier == expectedIdentity.ownerProcessIdentifier &&
-                    identity.bounds == expectedIdentity.capturedBounds
+                    identity.bounds == expectedIdentity.capturedBounds &&
+                    (identity.isOnScreen || expectedIdentity.isMinimized == true)
             }
             let axWindowPresence: PinnedMinimizedWindowAXPresence? = if windowServerMatchesReceipt != true {
                 await BoundedBackgroundWindowAX.windowPresence(expectedIdentity: expectedIdentity)
