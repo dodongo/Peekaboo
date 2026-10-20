@@ -6,11 +6,13 @@ import Testing
 struct BrowserCommandStreamTests {
     @Test
     func startupAdvertisesKnownFeaturesWithoutInventingUnknownCapabilities() throws {
+        let epoch = try #require(UUID(uuidString: "9B051999-8992-4609-B34A-0D4F4B31A227"))
         for features: [String]? in [nil, [], ["read:skipNavigationWait"]] {
-            let data = try BrowserCommandStream.readyMessage(features: features)
+            let data = try BrowserCommandStream.readyMessage(features: features, providerSessionEpoch: epoch)
             let message = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
             #expect(message["ready"] as? Bool == true)
             #expect(message["protocol"] as? String == "peekaboo-browser-stream-1")
+            #expect(message["provider_session_epoch"] as? String == "9b051999-8992-4609-b34a-0d4f4b31a227")
             #expect(message["features"] as? [String] == features)
             #expect(data.last == 10)
         }

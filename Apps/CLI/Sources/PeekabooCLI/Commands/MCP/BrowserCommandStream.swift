@@ -49,8 +49,14 @@ enum BrowserCommandStream {
         return arguments
     }
 
-    static func readyMessage(features: [String]?) throws -> Data {
-        var message: [String: Any] = ["ready": true, "protocol": "peekaboo-browser-stream-1"]
+    /// The startup line: protocol, provider features, and the provider session the stream is bound to,
+    /// so a caller can check a saved observation's session without a separate status call.
+    static func readyMessage(features: [String]?, providerSessionEpoch: UUID) throws -> Data {
+        var message: [String: Any] = [
+            "ready": true,
+            "protocol": "peekaboo-browser-stream-1",
+            "provider_session_epoch": providerSessionEpoch.uuidString.lowercased(),
+        ]
         if let features { message["features"] = features }
         var encoded = try JSONSerialization.data(withJSONObject: message, options: [.sortedKeys])
         encoded.append(10)
@@ -128,7 +134,10 @@ extension BrowserCommand {
         let output = FileHandle.standardOutput
         try output
             .write(contentsOf: BrowserCommandStream
-                .readyMessage(features: (initial.providerFeatures ?? []) + ["stream:navigate", "stream:upload"])
+                .readyMessage(
+                    features: (initial.providerFeatures ?? []) + ["stream:navigate", "stream:upload"],
+                    providerSessionEpoch: epoch.rawValue
+                )
             )
         var input = BrowserCommandStream.Input(handle: .standardInput)
         var count = 0
