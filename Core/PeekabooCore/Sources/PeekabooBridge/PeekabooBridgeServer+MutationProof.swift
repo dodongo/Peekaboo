@@ -112,7 +112,11 @@ extension PeekabooBridgeServer {
                     throw error
                 }
             }
-            if request.operation == .maximizeWindow, let rawReadback {
+            if [.closeWindow, .backgroundCloseWindow].contains(request.operation),
+               let rawReadback, !rawReadback.isOnScreen, !rawReadback.isMinimized
+            {
+                readback = nil
+            } else if request.operation == .maximizeWindow, let rawReadback {
                 let visibleWorkArea = self.maximizedVisibleWorkAreaProvider(rawReadback.bounds)
                 readback = rawReadback.withMutationPostconditionEvidence(.init(
                     isMaximized: visibleWorkArea.map {

@@ -1089,6 +1089,27 @@ struct PeekabooBridgeHandlerMutationSemanticsTests {
 
     @Test
     @MainActor
+    func `current close treats an ordered-out window readback as a closed target`() async throws {
+        let hidden = ServiceWindowInfo(
+            windowID: Self.windowIdentity.windowID,
+            title: "Fixture",
+            bounds: Self.windowIdentity.capturedBounds ?? .zero,
+            isOnScreen: false,
+            mutationIdentity: Self.windowIdentity)
+        let windows = HandlerMutationWindowService(readback: hidden)
+        let handled = try await Self.handleCurrent(
+            .backgroundCloseWindow(.init(target: .windowId(77), expectedIdentity: Self.windowIdentity)),
+            with: Self.server(services: StubServices(windows: windows)))
+
+        guard case .window(nil) = handled.response else {
+            Issue.record("Expected the ordered-out post-close window to be returned as nil")
+            return
+        }
+        #expect(handled.outcome?.state == .confirmedChange)
+    }
+
+    @Test
+    @MainActor
     func `current window mutations keep other readback failures indeterminate`() async throws {
         let cases: [(request: PeekabooBridgeRequest, error: PeekabooError)] = [
             (
