@@ -77,6 +77,12 @@ extension WindowManagementService {
                         reason: "Window close operation failed")
                 }
                 guard attempt.disappeared else {
+                    if attempt.presentedSheet {
+                        throw WindowManagementActionOutcome.closeOpenedSheet(
+                            delivery: WindowManagementActionOutcome.backgroundActionDelivery,
+                            dispatchCount: attempt.dispatchCount,
+                            windowID: trackedWindowID)
+                    }
                     throw WindowManagementActionOutcome.suspectedNoop(
                         action: "close window",
                         delivery: WindowManagementActionOutcome.backgroundActionDelivery,
@@ -381,7 +387,12 @@ extension WindowManagementService {
                 case .disappeared:
                     return PinnedWindowCloseAttemptResult(dispatchCount: 1, disappeared: true)
                 case .remained:
-                    break
+                    if await BoundedBackgroundWindowAX.windowHasSheet(expectedIdentity: expectedIdentity) {
+                        return PinnedWindowCloseAttemptResult(
+                            dispatchCount: 1,
+                            disappeared: false,
+                            presentedSheet: true)
+                    }
                 case .unverifiable:
                     throw PeekabooError.commandFailed(
                         "The exact window close result could not be verified")
@@ -411,9 +422,14 @@ extension WindowManagementService {
                 throw PeekabooError.commandFailed(
                     "The exact window close result could not be verified")
             }
+            let disappeared = disposition == .disappeared
+            let presentedSheet = disappeared
+                ? false
+                : await BoundedBackgroundWindowAX.windowHasSheet(expectedIdentity: expectedIdentity)
             return PinnedWindowCloseAttemptResult(
                 dispatchCount: dispatchCount,
-                disappeared: disposition == .disappeared)
+                disappeared: disappeared,
+                presentedSheet: presentedSheet)
         } catch {
             throw WindowManagementActionOutcome.dispatchedUnverified(
                 action: "close window",
@@ -811,6 +827,7 @@ func withMinimizedWindowFailureRecovery<T>(
 struct PinnedWindowCloseAttemptResult {
     let dispatchCount: Int
     let disappeared: Bool
+    var presentedSheet = false
 
     var dispatched: Bool {
         self.dispatchCount > 0
@@ -1083,6 +1100,32 @@ private enum BoundedBackgroundWindowAX {
                     childWindow,
                     kAXMinimizedAttribute as CFString,
                     kCFBooleanFalse) == .success
+            }
+        }
+    }
+
+    static func windowHasSheet(expectedIdentity: WindowMutationIdentity) async -> Bool {
+        await self.perform(expectedIdentity: expectedIdentity) {
+            guard SystemIdentityResolver.validateWindowMutationOwnerGeneration(expectedIdentity),
+                  let windowID = CGWindowID(exactly: expectedIdentity.windowID),
+                  let rawWindow = self.exactWindow(
+                      windowID: windowID,
+                      ownerPID: expectedIdentity.ownerProcessIdentifier)
+            else {
+                return false
+            }
+            return AXChildWindowMessagingTimeout.perform(
+                on: rawWindow,
+                timeout: self.messagingTimeout)
+            { childWindow in
+                var sheets: CFTypeRef?
+                guard AXUIElementCopyAttributeValue(childWindow, "AXSheets" as CFString, &sheets) == .success,
+                      let sheets,
+                      CFGetTypeID(sheets) == CFArrayGetTypeID()
+                else {
+                    return false
+                }
+                return CFArrayGetCount(unsafeDowncast(sheets, to: CFArray.self)) > 0
             }
         }
     }

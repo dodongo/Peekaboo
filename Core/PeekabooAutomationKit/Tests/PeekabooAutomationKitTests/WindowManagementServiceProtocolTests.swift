@@ -106,6 +106,19 @@ struct WindowManagementServiceProtocolTests {
     }
 
     @Test
+    func `a close that opens a sheet reports it as unsafe to retry`() {
+        let failure = WindowManagementActionOutcome.closeOpenedSheet(
+            delivery: WindowManagementActionOutcome.backgroundActionDelivery,
+            dispatchCount: 1,
+            windowID: 4303)
+
+        #expect(failure.outcome.state == .dispatchedUnverified)
+        #expect(failure.outcome.retrySafety == .unsafe)
+        #expect(failure.message.contains("opened a sheet on window 4303"))
+        #expect(failure.hint?.contains("peekaboo dialog") == true)
+    }
+
+    @Test
     func `post AX verification failure reports accepted delivery without claiming work is still running`() {
         let failure = WindowManagementActionOutcome.dispatchedUnverified(
             action: "move window",

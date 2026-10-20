@@ -65,6 +65,20 @@ enum WindowManagementActionOutcome {
             causeDescription: cause.map { String(describing: $0) })
     }
 
+    static func closeOpenedSheet(
+        delivery: DesktopActionOutcome.Delivery,
+        dispatchCount: Int,
+        windowID: Int) -> DesktopActionFailure
+    {
+        .dispatchedUnverified(
+            delivery: delivery,
+            evidence: .deliveryAccepted,
+            unitCount: self.dispatchUnitCount(dispatchCount),
+            message: "The close window request opened a sheet on window \(windowID), such as a save prompt; " +
+                "the window stays open until the sheet is answered",
+            hint: "Observe the sheet and answer it with peekaboo dialog; do not retry the close.")
+    }
+
     static func dispatchedUnverified(
         action: String,
         delivery: DesktopActionOutcome.Delivery,

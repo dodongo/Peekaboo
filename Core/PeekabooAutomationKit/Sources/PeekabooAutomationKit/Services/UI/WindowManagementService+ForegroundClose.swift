@@ -33,6 +33,12 @@ extension WindowManagementService {
                 } else {
                     try await self.attemptPinnedBackgroundClose(expectedIdentity)
                 }
+                if backgroundAttempt.presentedSheet {
+                    throw WindowManagementActionOutcome.closeOpenedSheet(
+                        delivery: WindowManagementActionOutcome.backgroundActionDelivery,
+                        dispatchCount: backgroundAttempt.dispatchCount,
+                        windowID: trackedWindowID)
+                }
                 if backgroundAttempt.dispatched {
                     let backgroundOutcome = backgroundAttempt.disappeared
                         ? WindowManagementActionOutcome.confirmedChange(
